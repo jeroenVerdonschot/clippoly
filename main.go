@@ -7,9 +7,9 @@ import (
 
 type coord [3]float32
 
-type polygon []coord
+type Polygon []coord
 
-type polygons []polygon
+type Polygons []Polygon
 
 type node struct {
 	coord    coord
@@ -70,11 +70,11 @@ func relink(new, from, to, cross1, cross2 *node) {
 
 }
 
-func Crop(target_, crop_ polygon) (triangles polygons, err error) {
+func Crop(target, clip Polygon) (triangles Polygons, err error) {
 	idGen := &IDGenerator{}
 
-	targetNodes := makeShapeWithID(target_, true, idGen)
-	clipNodes := makeShapeWithID(crop_, false, idGen)
+	targetNodes := makeShapeWithID(target, true, idGen)
+	clipNodes := makeShapeWithID(clip, false, idGen)
 
 	areAllInside := classifyNodes(targetNodes, clipNodes)
 	if areAllInside {
@@ -165,7 +165,7 @@ func checkIntersections(curNode, n *node, nodes []*node, idGen *IDGenerator) *no
 	return nil
 }
 
-func makeShapeWithID(poly polygon, isTarget bool, idGen *IDGenerator) []*node {
+func makeShapeWithID(poly Polygon, isTarget bool, idGen *IDGenerator) []*node {
 	ln := len(poly)
 	if ln == 0 {
 		return nil
@@ -189,17 +189,17 @@ func makeShapeWithID(poly polygon, isTarget bool, idGen *IDGenerator) []*node {
 
 	return nodes
 }
-func triangulate(nodes []*node) (polygons, error) {
+func triangulate(nodes []*node) (Polygons, error) {
 	ln := len(nodes)
 	if ln < 3 {
 		return nil, fmt.Errorf("triangulate: not enough edges (need at least 3, got %d)", ln)
 	}
 
-	triangles := make([]polygon, 0, ln-2)
+	triangles := make([]Polygon, 0, ln-2)
 
 	// Fan triangulation from first vertex
 	for i := 1; i < ln-1; i++ {
-		triangles = append(triangles, polygon{
+		triangles = append(triangles, Polygon{
 			nodes[0].coord,
 			nodes[i].coord,
 			nodes[i+1].coord,

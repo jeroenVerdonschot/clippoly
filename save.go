@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 )
 
-func saveTriangleCropPNG(path string, crop polygon, input polygon, result polygons) error {
+func saveTriangleCropPNG(path string, crop Polygon, input Polygon, result Polygons) error {
 	cropCoords := trimCoords(crop[:])
 	inputCoords := trimCoords(input[:])
 

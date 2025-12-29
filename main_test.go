@@ -8,11 +8,11 @@ import (
 )
 
 func TestMultipleTriangleCropsWithPalette(t *testing.T) {
-	crop := polygon{{0, 0}, {40, 0}, {40, 30}, {0, 30}}
+	crop := Polygon{{0, 0}, {40, 0}, {40, 30}, {0, 30}}
 
 	// 3 and 7 give misktake
 
-	triangles := []polygon{
+	triangles := []Polygon{
 		{{-10, 10}, {20, 10}, {10, 25}},  // left edge
 		{{10, -5}, {30, 10}, {20, 20}},   // bottom edge
 		{{-10, 20}, {30, 40}, {20, 15}},  // top-left edge
