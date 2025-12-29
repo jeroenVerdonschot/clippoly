@@ -19,11 +19,11 @@ type node struct {
 	isTarget bool
 }
 
-type IDGenerator struct {
+type idGenerator struct {
 	current int
 }
 
-func (g *IDGenerator) Next() int {
+func (g *idGenerator) Next() int {
 	g.current++
 	return g.current
 }
@@ -71,7 +71,7 @@ func relink(new, from, to, cross1, cross2 *node) {
 }
 
 func Crop(target, clip Polygon) (triangles Polygons, err error) {
-	idGen := &IDGenerator{}
+	idGen := &idGenerator{}
 
 	targetNodes := makeShapeWithID(target, true, idGen)
 	clipNodes := makeShapeWithID(clip, false, idGen)
@@ -93,7 +93,7 @@ func Crop(target, clip Polygon) (triangles Polygons, err error) {
 	return triangulate(loop)
 }
 
-func traceIntersectionLoop(targetNodes, clipNodes []*node, idGen *IDGenerator) ([]*node, error) {
+func traceIntersectionLoop(targetNodes, clipNodes []*node, idGen *idGenerator) ([]*node, error) {
 	const maxIterations = 1000 // Use a more reasonable limit
 
 	loop := make([]*node, 0, 12) // Pre-allocate with reasonable capacity
@@ -119,7 +119,7 @@ func traceIntersectionLoop(targetNodes, clipNodes []*node, idGen *IDGenerator) (
 	return nil, fmt.Errorf("exceeded max iterations (%d) while tracing loop", maxIterations)
 }
 
-func findNextNode(curNode *node, loop []*node, targetNodes, clipNodes []*node, idGen *IDGenerator) (*node, bool) {
+func findNextNode(curNode *node, loop []*node, targetNodes, clipNodes []*node, idGen *idGenerator) (*node, bool) {
 	for _, n := range curNode.nodes {
 		// Check if we've completed the loop
 		if len(loop) > 0 && n.id == loop[0].id {
@@ -145,7 +145,7 @@ func findNextNode(curNode *node, loop []*node, targetNodes, clipNodes []*node, i
 	return nil, false
 }
 
-func checkIntersections(curNode, n *node, nodes []*node, idGen *IDGenerator) *node {
+func checkIntersections(curNode, n *node, nodes []*node, idGen *idGenerator) *node {
 	edge1 := []*node{curNode, n}
 
 	for _, cl := range nodes {
@@ -165,7 +165,7 @@ func checkIntersections(curNode, n *node, nodes []*node, idGen *IDGenerator) *no
 	return nil
 }
 
-func makeShapeWithID(poly Polygon, isTarget bool, idGen *IDGenerator) []*node {
+func makeShapeWithID(poly Polygon, isTarget bool, idGen *idGenerator) []*node {
 	ln := len(poly)
 	if ln == 0 {
 		return nil
