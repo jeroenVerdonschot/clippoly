@@ -1,3 +1,3 @@
-module clippoly
+module github.com/jeroenVerdonschot/clippoly
 
-go 1.25.4
+go 1.25
