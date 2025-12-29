@@ -47,7 +47,7 @@ func TestMultipleTriangleCropsWithPalette(t *testing.T) {
 		idx := i
 
 		t.Run(fmt.Sprintf("triangle_%02d", idx+1), func(t *testing.T) {
-			poly, err := Crop(tri, crop)
+			poly, err := Clip(tri, crop)
 
 			if err != nil {
 				t.Fatalf("crop failed: %v", err)
@@ -66,12 +66,12 @@ func TestMultipleTriangleCropsWithPalette(t *testing.T) {
 }
 func TestFindIntersectInterpolatesZ(t *testing.T) {
 	edge1 := []*node{
-		{coord: coord{0, 0, 0}},
-		{coord: coord{10, 0, 10}},
+		{coord: Coord{0, 0, 0}},
+		{coord: Coord{10, 0, 10}},
 	}
 	edge2 := []*node{
-		{coord: coord{5, -5, 0}},
-		{coord: coord{5, 5, 0}},
+		{coord: Coord{5, -5, 0}},
+		{coord: Coord{5, 5, 0}},
 	}
 
 	intersection := findIntersect(edge1, edge2)

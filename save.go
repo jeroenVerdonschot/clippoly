@@ -13,7 +13,7 @@ func saveTriangleCropPNG(path string, crop Polygon, input Polygon, result Polygo
 	cropCoords := trimCoords(crop[:])
 	inputCoords := trimCoords(input[:])
 
-	all := [][]coord{cropCoords, inputCoords}
+	all := [][]Coord{cropCoords, inputCoords}
 	for _, tri := range result {
 		all = append(all, trimCoords(tri[:]))
 	}
@@ -56,7 +56,7 @@ func saveTriangleCropPNG(path string, crop Polygon, input Polygon, result Polygo
 	img := image.NewRGBA(image.Rect(0, 0, width, height))
 	fillImage(img, color.RGBA{R: 245, G: 245, B: 245, A: 255})
 
-	project := func(c coord) (int, int) {
+	project := func(c Coord) (int, int) {
 		x := (float64(c[0])-minX)*scale + margin
 		y := (maxY-float64(c[1]))*scale + margin
 		return int(math.Round(x)), int(math.Round(y))
@@ -81,7 +81,7 @@ func saveTriangleCropPNG(path string, crop Polygon, input Polygon, result Polygo
 	return png.Encode(file, img)
 }
 
-func coordBounds(groups ...[]coord) (minX, maxX, minY, maxY float64, ok bool) {
+func coordBounds(groups ...[]Coord) (minX, maxX, minY, maxY float64, ok bool) {
 	minX, minY = math.MaxFloat64, math.MaxFloat64
 	maxX, maxY = -math.MaxFloat64, -math.MaxFloat64
 
@@ -109,7 +109,7 @@ func coordBounds(groups ...[]coord) (minX, maxX, minY, maxY float64, ok bool) {
 	return
 }
 
-func trimCoords(coords []coord) []coord {
+func trimCoords(coords []Coord) []Coord {
 	if len(coords) <= 1 {
 		return coords
 	}
@@ -119,7 +119,7 @@ func trimCoords(coords []coord) []coord {
 	return coords
 }
 
-func drawLoop(img *image.RGBA, coords []coord, project func(coord) (int, int), col color.Color) {
+func drawLoop(img *image.RGBA, coords []Coord, project func(Coord) (int, int), col color.Color) {
 	if len(coords) == 0 {
 		return
 	}

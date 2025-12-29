@@ -5,14 +5,14 @@ import (
 	"math"
 )
 
-type coord [3]float32
+type Coord [3]float32
 
-type Polygon []coord
+type Polygon []Coord
 
 type Polygons []Polygon
 
 type node struct {
-	coord    coord
+	coord    Coord
 	isInside bool
 	nodes    []*node
 	id       int
@@ -70,7 +70,7 @@ func relink(new, from, to, cross1, cross2 *node) {
 
 }
 
-func Crop(target, clip Polygon) (triangles Polygons, err error) {
+func Clip(target, clip Polygon) (triangles Polygons, err error) {
 	idGen := &idGenerator{}
 
 	targetNodes := makeShapeWithID(target, true, idGen)
