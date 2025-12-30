@@ -3,6 +3,7 @@ package clippoly
 import (
 	"fmt"
 	"image/color"
+	"math"
 	"path/filepath"
 	"testing"
 )
@@ -88,5 +89,149 @@ func TestFindIntersectInterpolatesZ(t *testing.T) {
 	}
 	if dz := float64(intersection.coord[2] - 5); dz < -eps || dz > eps {
 		t.Fatalf("unexpected z interpolation: got %v, want ~5", intersection.coord[2])
+	}
+}
+
+func TestClipMeshFaces(t *testing.T) {
+	vertices := []Coord{
+		{0, 0, 0},
+		{4, 0, 0},
+		{4, 4, 0},
+		{0, 4, 0},
+	}
+	faces := [][3]int{
+		{0, 1, 2},
+		{0, 2, 3},
+	}
+
+	clip := Polygon{
+		{2, -1, 0},
+		{5, -1, 0},
+		{5, 3, 0},
+		{2, 3, 0},
+	}
+
+	expectedAreas := []float64{5.5, 0.5}
+	area := func(poly Polygon) float64 {
+		if len(poly) < 3 {
+			return 0
+		}
+		var sum float64
+		for i := range poly {
+			j := (i + 1) % len(poly)
+			sum += float64(poly[i][0])*float64(poly[j][1]) - float64(poly[j][0])*float64(poly[i][1])
+		}
+		return math.Abs(sum) * 0.5
+	}
+
+	for idx, face := range faces {
+		poly := Polygon{
+			vertices[face[0]],
+			vertices[face[1]],
+			vertices[face[2]],
+		}
+		clipped, err := Clip(poly, clip)
+		if err != nil {
+			t.Fatalf("clip face %d: %v", idx, err)
+		}
+		if clipped == nil {
+			t.Fatalf("clip face %d: expected intersection", idx)
+		}
+
+		var total float64
+		for _, tri := range clipped {
+			total += area(tri)
+		}
+
+		if diff := math.Abs(total - expectedAreas[idx]); diff > 1e-3 {
+			t.Fatalf("clipped area mismatch for face %d: got %.3f, want %.3f", idx, total, expectedAreas[idx])
+		}
+
+		filename := filepath.Join("test_output", fmt.Sprintf("mesh_face_%02d.png", idx+1))
+		if err := saveTriangleCropPNG(filename, clip, poly, clipped); err != nil {
+			t.Fatalf("save png for face %d: %v", idx, err)
+		}
+	}
+}
+
+func Test_meshWithReturnNewMesh(t *testing.T) {
+	vertices := []Coord{
+		{0, 0, 0},
+		{4, 0, 4},
+		{4, 4, 4},
+		{0, 4, 0},
+	}
+	faces := [][3]int{
+		{0, 1, 2},
+		{0, 2, 3},
+	}
+
+	clip := Polygon{
+		{2, -1, 0},
+		{5, -1, 0},
+		{5, 3, 0},
+		{2, 3, 0},
+	}
+
+	newVerts, newFaces, err := ClipMesh(vertices, faces, clip)
+	if err != nil {
+		t.Fatalf("clip mesh: %v", err)
+	}
+
+	if len(newVerts) != 6 {
+		t.Fatalf("expected 6 vertices after clipping, got %d", len(newVerts))
+	}
+	if len(newFaces) != 4 {
+		t.Fatalf("expected 4 faces after clipping, got %d", len(newFaces))
+	}
+
+	expectedVerts := map[Coord]struct{}{
+		{2, 0, 2}:   {},
+		{4, 0, 4}:   {},
+		{4, 3, 1.5}: {},
+		{3, 3, 3}:   {},
+		{2, 2, 2}:   {},
+		{2, 3, 0}:   {},
+	}
+	for _, v := range newVerts {
+		if _, ok := expectedVerts[v]; !ok {
+			t.Fatalf("unexpected vertex in result: %v", v)
+		}
+	}
+
+	area := func(poly Polygon) float64 {
+		if len(poly) < 3 {
+			return 0
+		}
+		var sum float64
+		for i := range poly {
+			j := (i + 1) % len(poly)
+			sum += float64(poly[i][0])*float64(poly[j][1]) - float64(poly[j][0])*float64(poly[i][1])
+		}
+		return math.Abs(sum) * 0.5
+	}
+
+	var totalArea float64
+	for idx, face := range newFaces {
+		for _, vi := range face {
+			if vi < 0 || vi >= len(newVerts) {
+				t.Fatalf("face %d has invalid vertex index %d", idx, vi)
+			}
+		}
+		poly := Polygon{
+			newVerts[face[0]],
+			newVerts[face[1]],
+			newVerts[face[2]],
+		}
+		totalArea += area(poly)
+	}
+
+	if diff := math.Abs(totalArea - 6.0); diff > 1e-3 {
+		t.Fatalf("clipped mesh area mismatch: got %.3f, want 6.000", totalArea)
+	}
+
+	filename := filepath.Join("test_output", "mesh_clip.png")
+	if err := saveMeshClipPNG(filename, vertices, faces, clip, newVerts, newFaces); err != nil {
+		t.Fatalf("save mesh png: %v", err)
 	}
 }

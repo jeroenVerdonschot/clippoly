@@ -71,6 +71,24 @@ func relink(new, from, to, cross1, cross2 *node) {
 }
 
 func Clip(target, clip Polygon) (triangles Polygons, err error) {
+	if len(target) < 3 {
+		return nil, fmt.Errorf("target polygon must have at least 3 vertices, got %d", len(target))
+	}
+	if len(clip) < 3 {
+		return nil, fmt.Errorf("clip polygon must have at least 3 vertices, got %d", len(clip))
+	}
+
+	// Early exit: check if polygons don't intersect at all
+	if !polygonsIntersect(target, clip) {
+		// Check if target is completely inside or outside clip
+		if isInsidePolygon(target[0], clip) {
+			// Target is completely inside clip, return triangulated target
+			return triangulatePolygon(target), nil
+		}
+		// Target is completely outside clip, return empty
+		return nil, nil
+	}
+
 	idGen := &idGenerator{}
 
 	targetNodes := makeShapeWithID(target, true, idGen)
@@ -91,6 +109,169 @@ func Clip(target, clip Polygon) (triangles Polygons, err error) {
 	}
 
 	return triangulate(loop)
+}
+
+// polygonsIntersect checks if two polygons have any edge intersections
+func polygonsIntersect(poly1, poly2 Polygon) bool {
+	// First check bounding boxes for quick rejection
+	if !boundingBoxesOverlap(poly1, poly2) {
+		return false
+	}
+
+	// Check if any edges intersect
+	for i := 0; i < len(poly1); i++ {
+		next := (i + 1) % len(poly1)
+		a1, a2 := poly1[i], poly1[next]
+
+		for j := 0; j < len(poly2); j++ {
+			nextJ := (j + 1) % len(poly2)
+			b1, b2 := poly2[j], poly2[nextJ]
+
+			if segmentsIntersect(a1, a2, b1, b2) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// boundingBoxesOverlap checks if bounding boxes of two polygons overlap
+func boundingBoxesOverlap(poly1, poly2 Polygon) bool {
+	if len(poly1) == 0 || len(poly2) == 0 {
+		return false
+	}
+
+	// Calculate bounding box for poly1
+	min1X, max1X := poly1[0][0], poly1[0][0]
+	min1Y, max1Y := poly1[0][1], poly1[0][1]
+	for _, p := range poly1[1:] {
+		if p[0] < min1X {
+			min1X = p[0]
+		}
+		if p[0] > max1X {
+			max1X = p[0]
+		}
+		if p[1] < min1Y {
+			min1Y = p[1]
+		}
+		if p[1] > max1Y {
+			max1Y = p[1]
+		}
+	}
+
+	// Calculate bounding box for poly2
+	min2X, max2X := poly2[0][0], poly2[0][0]
+	min2Y, max2Y := poly2[0][1], poly2[0][1]
+	for _, p := range poly2[1:] {
+		if p[0] < min2X {
+			min2X = p[0]
+		}
+		if p[0] > max2X {
+			max2X = p[0]
+		}
+		if p[1] < min2Y {
+			min2Y = p[1]
+		}
+		if p[1] > max2Y {
+			max2Y = p[1]
+		}
+	}
+
+	// Check overlap
+	return min1X < max2X && max1X > min2X && min1Y < max2Y && max1Y > min2Y
+}
+
+// segmentsIntersect checks if two line segments intersect (excluding endpoints)
+func segmentsIntersect(a1, a2, b1, b2 Coord) bool {
+	// Quick bounding box check
+	aMinX, aMaxX := a1[0], a2[0]
+	if aMinX > aMaxX {
+		aMinX, aMaxX = aMaxX, aMinX
+	}
+	aMinY, aMaxY := a1[1], a2[1]
+	if aMinY > aMaxY {
+		aMinY, aMaxY = aMaxY, aMinY
+	}
+
+	bMinX, bMaxX := b1[0], b2[0]
+	if bMinX > bMaxX {
+		bMinX, bMaxX = bMaxX, bMinX
+	}
+	bMinY, bMaxY := b1[1], b2[1]
+	if bMinY > bMaxY {
+		bMinY, bMaxY = bMaxY, bMinY
+	}
+
+	if aMaxX < bMinX || aMinX > bMaxX || aMaxY < bMinY || aMinY > bMaxY {
+		return false
+	}
+
+	// Calculate intersection
+	ax := a2[0] - a1[0]
+	ay := a2[1] - a1[1]
+	bx := b2[0] - b1[0]
+	by := b2[1] - b1[1]
+	den := ax*by - ay*bx
+
+	if den == 0 {
+		return false // Parallel or collinear
+	}
+
+	cx := b1[0] - a1[0]
+	cy := b1[1] - a1[1]
+	t := (cx*by - cy*bx) / den
+	u := (cx*ay - cy*ax) / den
+
+	// Check if intersection is strictly between endpoints
+	return t > 0 && t < 1 && u > 0 && u < 1
+}
+
+// isInsidePolygon checks if a point is inside a polygon
+func isInsidePolygon(point Coord, poly Polygon) bool {
+	if len(poly) < 3 {
+		return false
+	}
+
+	px := float64(point[0])
+	py := float64(point[1])
+	inside := false
+
+	prev := poly[len(poly)-1]
+	for _, curr := range poly {
+		x1 := float64(prev[0])
+		y1 := float64(prev[1])
+		x2 := float64(curr[0])
+		y2 := float64(curr[1])
+
+		if (y1 > py) != (y2 > py) {
+			xInt := (x2-x1)*(py-y1)/(y2-y1) + x1
+			if px < xInt {
+				inside = !inside
+			}
+		}
+		prev = curr
+	}
+
+	return inside
+}
+
+// triangulatePolygon is a helper to triangulate a simple polygon
+func triangulatePolygon(poly Polygon) Polygons {
+	if len(poly) < 3 {
+		return nil
+	}
+
+	triangles := make([]Polygon, 0, len(poly)-2)
+	for i := 1; i < len(poly)-1; i++ {
+		triangles = append(triangles, Polygon{
+			poly[0],
+			poly[i],
+			poly[i+1],
+		})
+	}
+
+	return triangles
 }
 
 func traceIntersectionLoop(targetNodes, clipNodes []*node, idGen *idGenerator) ([]*node, error) {
@@ -189,6 +370,7 @@ func makeShapeWithID(poly Polygon, isTarget bool, idGen *idGenerator) []*node {
 
 	return nodes
 }
+
 func triangulate(nodes []*node) (Polygons, error) {
 	ln := len(nodes)
 	if ln < 3 {
