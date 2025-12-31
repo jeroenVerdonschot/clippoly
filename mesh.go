@@ -1,5 +1,7 @@
 package clippoly
 
+import "fmt"
+
 // ClipMesh clips all faces of a mesh against the provided clip polygon.
 // The returned vertices and faces describe the clipped mesh using shared vertices.
 func ClipMesh(vertices []Coord, faces [][3]int, clip Polygon) ([]Coord, [][3]int, error) {
@@ -30,7 +32,9 @@ func ClipMesh(vertices []Coord, faces [][3]int, clip Polygon) ([]Coord, [][3]int
 
 		clipped, err := Clip(poly, clip)
 		if err != nil {
-			return nil, nil, err
+			fmt.Println("error: ", err, poly, clip)
+			// return nil, nil, err
+			continue
 		}
 		if clipped == nil {
 			continue

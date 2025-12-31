@@ -235,3 +235,38 @@ func Test_meshWithReturnNewMesh(t *testing.T) {
 		t.Fatalf("save mesh png: %v", err)
 	}
 }
+
+func TestClipMesh_RemovesNonIntersectingFaces(t *testing.T) {
+	vertices := []Coord{
+		{82.453125, -334.59375, 14.700125},
+		{86.828125, -347.40625, 14.700125},
+		{91.328125, -327.0625, 14.700125},
+		{114.859375, -320.0625, 14.700125},
+	}
+	faces := [][3]int{
+		{0, 1, 2},
+		{3, 2, 1},
+	}
+	clip := Polygon{
+		{0, -305.21875, 0},
+		{344.89062, -305.21875, 0},
+		{344.89062, 0, 0},
+		{0, 0, 0},
+	}
+
+	clippedVerts, clippedFaces, err := ClipMesh(vertices, faces, clip)
+	if err != nil {
+		t.Fatalf("clip mesh: %v", err)
+	}
+	if len(clippedVerts) != 0 {
+		t.Fatalf("expected no vertices after clipping, got %d", len(clippedVerts))
+	}
+	if len(clippedFaces) != 0 {
+		t.Fatalf("expected no faces after clipping, got %d", len(clippedFaces))
+	}
+
+	filename := filepath.Join("test_output", "mesh_clip_bug.png")
+	if err := saveMeshClipPNG(filename, vertices, faces, clip, clippedVerts, clippedFaces); err != nil {
+		t.Fatalf("save mesh png: %v", err)
+	}
+}
