@@ -297,7 +297,10 @@ func traceIntersectionLoop(targetNodes, clipNodes []*node, idGen *idGenerator) (
 		}
 
 		loop = append(loop, nextNode)
-		nextNode.remove(curNode)
+
+		// fmt.Printf("nextNode.id: %v\n", nextNode.id)
+		// fmt.Printf("loop: %v\n", loop)
+
 		curNode = nextNode
 
 	}
@@ -319,7 +322,12 @@ func findNextNode(curNode *node, loop []*node, targetNodes, clipNodes []*node, i
 			nodes = targetNodes
 		}
 
-		if intNode := checkIntersections(curNode, n, nodes, idGen); intNode != nil {
+		var intNode *node
+
+		if intNode = checkIntersections(curNode, n, nodes, idGen); intNode != nil {
+			if intNode.coord == curNode.coord {
+				continue
+			}
 			return intNode, false
 		}
 
@@ -422,9 +430,9 @@ func isInsideNodes(n1 *node, n2 []*node) bool {
 			return true
 		}
 
-		// if pointOnEdge(px, py, x1, y1, x2, y2) {
-		// 	return true
-		// }
+		if pointOnEdge(px, py, x1, y1, x2, y2) {
+			return true
+		}
 
 		if math.Abs(y1-y2) < eps {
 			prev = curr
@@ -491,8 +499,6 @@ func findIntersect(edge1 []*node, edge2 []*node) *node {
 	u := (cx*ay - cy*ax) / den
 
 	if t <= 0 || t >= 1 || u <= 0 || u >= 1 {
-		// fmt.Printf("t: %v\n", t)
-		// fmt.Printf("u: %v\n", u)
 		return nil
 	}
 

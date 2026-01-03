@@ -14,7 +14,8 @@ func TestMultipleTriangleCropsWithPalette(t *testing.T) {
 	// 3 and 7 give misktake
 
 	triangles := []Polygon{
-		{{-10, -10}, {20, 10}, {10, 30}}, // bottom-left corner
+		{{-10, -10}, {20, 10}, {10, 30}}, // bottom-left corner, edge case
+		{{-10, -10}, {20, 10}, {0, 30}},  // edge case 2
 
 		// {{-10, 10}, {20, 10}, {10, 25}}, // left edge
 		// {{10, -5}, {30, 10}, {20, 20}},  // bottom edge
@@ -52,7 +53,7 @@ func TestMultipleTriangleCropsWithPalette(t *testing.T) {
 			poly, err := Clip(tri, crop)
 
 			if err != nil {
-				// t.Fatalf("crop failed: %v", err)
+				t.Fatalf("crop failed: %v", err)
 			}
 			if poly == nil {
 				t.Fatalf("expected cropped triangles for triangle_%02d", idx+1)
@@ -450,4 +451,215 @@ func TestPointOfSegemtn(t *testing.T) {
 			t.Fatalf("save png: %v", err)
 		}
 	}
+}
+
+func Test_newClip(t *testing.T) {
+
+	tri := Polygon{
+		{4, 1, 0},
+		{0, 0, 0},
+		{3, -2, 0},
+	}
+	clip := Polygon{
+		{0, -3, 0},
+		{3, -3, 0},
+		{3, 0, 0},
+		{0, 0, 0},
+	}
+
+	idGen := &idGenerator{}
+
+	targetNodes := makeShapeWithID(tri, true, idGen)
+	clipNodes := makeShapeWithID(clip, false, idGen)
+
+	areAllInside := classifyNodes(targetNodes, clipNodes)
+	if areAllInside {
+	}
+	areAllInside = classifyNodes(clipNodes, targetNodes)
+	if areAllInside {
+	}
+
+	clipEdges := edges(clipNodes)
+	targetNodes, clipEdges = intersectPointOnEdge(targetNodes, clipEdges)
+
+	targetEdges := edges(targetNodes)
+	targetEdges, clipEdges = intersect(targetEdges, clipEdges)
+
+	allEdges := make([][]*node, 0, len(targetEdges)+len(clipEdges))
+	allEdges = append(allEdges, targetEdges...)
+	allEdges = append(allEdges, clipEdges...)
+
+	// TEMP
+
+	allRelevant := [][]*node{}
+	for _, e := range allEdges {
+
+		if e[0].isInside && e[1].isInside {
+			allRelevant = append(allRelevant, e)
+		}
+	}
+
+	//TEMP
+
+	allNodes := make([]*node, 0, len(targetNodes)+len(clipNodes))
+	seen := make(map[*node]struct{}, len(targetNodes)+len(clipNodes))
+	addNode := func(n *node) {
+		if n == nil {
+			return
+		}
+		if _, ok := seen[n]; ok {
+			return
+		}
+		seen[n] = struct{}{}
+		allNodes = append(allNodes, n)
+	}
+	for _, n := range targetNodes {
+		addNode(n)
+	}
+	for _, n := range clipNodes {
+		addNode(n)
+	}
+	for _, edge := range targetEdges {
+		for _, n := range edge {
+			addNode(n)
+		}
+	}
+	for _, edge := range clipEdges {
+		for _, n := range edge {
+			addNode(n)
+		}
+	}
+
+	filename := filepath.Join("test_output", "newclip_edges.png")
+	if err := saveEdgesPNGWithHighlight(filename, allEdges, allRelevant, allNodes...); err != nil {
+		t.Fatalf("save edges png: %v", err)
+	}
+
+	// allIntersections
+
+}
+
+func intersectPointOnEdge(targetNodes []*node, clip [][]*node) ([]*node, [][]*node) {
+
+	// check is targe node lay on a clip edge (pointonedge)
+	// if so add node to target and to clip
+	// set isInside true
+
+	for _, tn := range targetNodes {
+		px := tn.coord[0]
+		py := tn.coord[1]
+		for i := 0; i < len(clip); i++ {
+			edge := clip[i]
+			if len(edge) < 2 || edge[0] == nil || edge[1] == nil {
+				continue
+			}
+			a := edge[0]
+			b := edge[1]
+			if tn.coord == a.coord || tn.coord == b.coord {
+				tn.isInside = true
+				continue
+			}
+			if !pointOnEdge(px, py, a.coord[0], a.coord[1], b.coord[0], b.coord[1]) {
+				continue
+			}
+
+			tn.isInside = true
+			clip[i] = []*node{a, tn}
+			clip = append(clip, []*node{tn, b})
+
+			a.remove(b)
+			b.remove(a)
+			a.add(tn)
+			b.add(tn)
+			tn.add(a)
+			tn.add(b)
+		}
+	}
+
+	return targetNodes, clip
+
+}
+
+func intersect(target, clip [][]*node) ([][]*node, [][]*node) {
+
+	for i := 0; i < len(clip); i++ {
+		edge1 := clip[i]
+
+		for j := 0; j < len(target); j++ {
+			edge2 := target[j]
+
+			intNode := findIntersect(edge1, edge2)
+
+			if intNode != nil {
+
+				relink(intNode, edge1[0], edge1[1], edge2[0], edge2[1])
+
+				edge1End := edge1[1]
+				edge2End := edge2[1]
+
+				edge1[1] = intNode
+				clip[i] = edge1
+				clip = append(clip, []*node{intNode, edge1End})
+				edge2[1] = intNode
+				target[j] = edge2
+				target = append(target, []*node{intNode, edge2End})
+				// reset for loop
+				i = -1
+				break
+			}
+
+		}
+
+	}
+
+	return target, clip
+
+}
+
+func edges(nodes []*node) [][]*node {
+
+	ln := len(nodes)
+	if ln < 2 {
+		return nil
+	}
+
+	list := make([][]*node, 0, ln)
+	for i := 0; i < ln; i++ {
+		next := i + 1
+		if next == ln {
+			next = 0
+		}
+		list = append(list, []*node{nodes[i], nodes[next]})
+	}
+
+	return list
+
+}
+
+func Test_edges(t *testing.T) {
+
+	n1 := &node{id: 1}
+	n2 := &node{id: 2}
+	n3 := &node{id: 3}
+
+	got := edges([]*node{n1, n2, n3})
+	want := [][]*node{
+		{n1, n2},
+		{n2, n3},
+		{n3, n1},
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("edges length = %d, want %d", len(got), len(want))
+	}
+
+	for i := range want {
+		if len(got[i]) != 2 {
+			t.Fatalf("edge %d length = %d, want 2", i, len(got[i]))
+		}
+		if got[i][0] != want[i][0] || got[i][1] != want[i][1] {
+			t.Fatalf("edge %d = %v, want %v", i, got[i], want[i])
+		}
+	}
+
 }
