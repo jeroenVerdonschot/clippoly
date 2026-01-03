@@ -37,7 +37,7 @@ func saveTriangleCropPNG(path string, crop Polygon, input Polygon, result Polygo
 		maxSpan = spanY
 	}
 
-	const maxDim = 512.0
+	const maxDim = 1024.0
 	scale := maxDim / maxSpan
 	if scale < 1 {
 		scale = 1

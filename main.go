@@ -5,18 +5,19 @@ import (
 	"math"
 )
 
-type Coord [3]float32
+type Coord [3]float64
 
 type Polygon []Coord
 
 type Polygons []Polygon
 
 type node struct {
-	coord    Coord
-	isInside bool
-	nodes    []*node
-	id       int
-	isTarget bool
+	coord     Coord
+	isInside  bool
+	nodes     []*node
+	id        int
+	isTarget  bool
+	isVisited bool
 }
 
 type idGenerator struct {
@@ -70,7 +71,10 @@ func relink(new, from, to, cross1, cross2 *node) {
 
 }
 
+// find all intersetions
+
 func Clip(target, clip Polygon) (triangles Polygons, err error) {
+
 	if len(target) < 3 {
 		return nil, fmt.Errorf("target polygon must have at least 3 vertices, got %d", len(target))
 	}
@@ -79,14 +83,14 @@ func Clip(target, clip Polygon) (triangles Polygons, err error) {
 	}
 
 	// Early exit: check if polygons don't intersect at all
-	if !polygonsIntersect(target, clip) {
+	if !polygonsIntersect(target, clip) { // TODO check if improvemnt
 		// Check if target is completely inside or outside clip
 		if isInsidePolygon(target[0], clip) {
 			// Target is completely inside clip, return triangulated target
 			return triangulatePolygon(target), nil
 		}
 		// Target is completely outside clip, return empty
-		return nil, nil
+		return triangulatePolygon(clip), nil
 	}
 
 	idGen := &idGenerator{}
@@ -281,6 +285,7 @@ func traceIntersectionLoop(targetNodes, clipNodes []*node, idGen *idGenerator) (
 	curNode := targetNodes[0]
 
 	for range maxIterations {
+
 		nextNode, finished := findNextNode(curNode, loop, targetNodes, clipNodes, idGen)
 
 		if finished {
@@ -303,6 +308,7 @@ func traceIntersectionLoop(targetNodes, clipNodes []*node, idGen *idGenerator) (
 func findNextNode(curNode *node, loop []*node, targetNodes, clipNodes []*node, idGen *idGenerator) (*node, bool) {
 	for _, n := range curNode.nodes {
 		// Check if we've completed the loop
+
 		if len(loop) > 0 && n.id == loop[0].id {
 			return nil, true
 		}
@@ -336,10 +342,10 @@ func checkIntersections(curNode, n *node, nodes []*node, idGen *idGenerator) *no
 			if intNode := findIntersect(edge1, edge2); intNode != nil {
 				intNode.isInside = true
 				intNode.id = idGen.Next()
-
 				relink(intNode, curNode, n, cl, link)
 				return intNode
 			}
+
 		}
 	}
 
@@ -411,9 +417,15 @@ func isInsideNodes(n1 *node, n2 []*node) bool {
 		x2 := float64(curr.coord[0])
 		y2 := float64(curr.coord[1])
 
-		if n1.coord == curr.coord || n1.coord == prev.coord || pointOnSegment(px, py, x1, y1, x2, y2) {
+		if n1.coord == curr.coord ||
+			n1.coord == prev.coord {
 			return true
 		}
+
+		// if pointOnEdge(px, py, x1, y1, x2, y2) {
+		// 	return true
+		// }
+
 		if math.Abs(y1-y2) < eps {
 			prev = curr
 			continue
@@ -468,6 +480,7 @@ func findIntersect(edge1 []*node, edge2 []*node) *node {
 	bx := b2[0] - b1[0]
 	by := b2[1] - b1[1]
 	den := ax*by - ay*bx
+
 	if den == 0 {
 		return nil
 	}
@@ -478,6 +491,8 @@ func findIntersect(edge1 []*node, edge2 []*node) *node {
 	u := (cx*ay - cy*ax) / den
 
 	if t <= 0 || t >= 1 || u <= 0 || u >= 1 {
+		// fmt.Printf("t: %v\n", t)
+		// fmt.Printf("u: %v\n", u)
 		return nil
 	}
 
@@ -487,12 +502,12 @@ func findIntersect(edge1 []*node, edge2 []*node) *node {
 	z := a1[2] + t*(a2[2]-a1[2])
 
 	return &node{
-		coord:    [3]float32{x, y, z},
+		coord:    [3]float64{x, y, z},
 		isInside: true,
 	}
 }
 
-func pointOnSegment(px, py, x1, y1, x2, y2 float64) bool {
+func pointOnEdge(px, py, x1, y1, x2, y2 float64) bool {
 	// Cross product for collinearity
 	cross := (x2-x1)*(py-y1) - (y2-y1)*(px-x1)
 	if math.Abs(cross) > 1e-9 {
