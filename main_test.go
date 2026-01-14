@@ -14,8 +14,8 @@ func TestMultipleTriangleCropsWithPalette(t *testing.T) {
 	// 3 and 7 give misktake
 
 	triangles := []Polygon{
-		{{-10, -10}, {20, 10}, {10, 30}}, // bottom-left corner, edge case
-		{{-10, -10}, {20, 10}, {0, 30}},  // edge case 2
+		// {{-10, -10}, {20, 10}, {10, 30}}, // bottom-left corner, edge case
+		// {{-10, -10}, {20, 10}, {0, 30}},  // edge case 2
 
 		// {{-10, 10}, {20, 10}, {10, 25}}, // left edge
 		// {{10, -5}, {30, 10}, {20, 20}},  // bottom edge
@@ -33,8 +33,8 @@ func TestMultipleTriangleCropsWithPalette(t *testing.T) {
 		// {{5, 5}, {35, 5}, {20, 25}},     // fully inside crop
 		// {{0, 0}, {40, 0}, {0, 30}},      // along crop edges
 		// {{-20, -20}, {80, 5}, {10, 60}}, // large coverage
-		// {{20, -15}, {60, 15}, {20, 55}}, // tall slice through crop
-		// {{39, 29}, {80, 29}, {39, 80}},  // tiny corner overlap
+		{{20, -15}, {60, 15}, {20, 55}}, // tall slice through crop
+		// {{39, 29}, {80, 29}, {39, 80}}, // tiny corner overlap
 
 		// {{-15, 12}, {15, 32}, {30, -8}}, // left lean slice
 		// {{18, -8}, {22, 42}, {55, 18}},  // thin vertical through center
@@ -51,6 +51,67 @@ func TestMultipleTriangleCropsWithPalette(t *testing.T) {
 
 		t.Run(fmt.Sprintf("triangle_%02d", idx+1), func(t *testing.T) {
 			poly, err := Clip(tri, crop)
+
+			if err != nil {
+				t.Fatalf("crop failed: %v", err)
+			}
+			if poly == nil {
+				t.Fatalf("expected cropped triangles for triangle_%02d", idx+1)
+			}
+
+			filename := filepath.Join("test_output", fmt.Sprintf("triangle_%02d.png", idx+1))
+			if err := saveTriangleCropPNG(filename, crop, tri, poly); err != nil {
+				t.Fatalf("save png: %v", err)
+			}
+
+		})
+	}
+}
+
+func TestMultipleTriangleCropsWithPalette_newClip(t *testing.T) {
+	crop := Polygon{{0, 0}, {40, 0}, {40, 30}, {0, 30}}
+
+	// 3 and 7 give misktake
+
+	triangles := []Polygon{
+		{{-10, -10}, {20, 10}, {10, 30}}, // bottom-left corner, edge case
+		{{-10, -10}, {20, 10}, {0, 30}},  // edge case 2
+		{{20, -15}, {60, 15}, {20, 55}},
+
+		{{-10, 10}, {20, 10}, {10, 25}}, // left edge
+		{{10, -5}, {30, 10}, {20, 20}},  // bottom edge
+		{{-10, 20}, {30, 40}, {20, 15}}, // top-left edge
+		{{10, 20}, {30, 40}, {20, 15}},  // top edge !!!!
+		{{45, 10}, {20, 25}, {35, 35}},  // right edge !!!!
+		{{35, -5}, {50, 15}, {25, 20}},  // bottom-right corner !!!!
+		{{-10, 25}, {10, 40}, {20, 10}}, // left-top corner
+		{{15, 5}, {45, 20}, {25, 35}},   // right-top corner
+		{{5, 35}, {30, 20}, {-10, 20}},  // top overshoot !!!!
+		{{20, 10}, {50, 20}, {30, 40}},  // right overshoot
+		{{-5, -2}, {15, 10}, {25, -8}},  // bottom overshoot !!!
+		{{38, 2}, {50, 25}, {20, 32}},   // right-top slice
+
+		{{5, 5}, {35, 5}, {20, 25}},     // fully inside crop
+		{{0, 0}, {40, 0}, {0, 30}},      // along crop edges
+		{{-20, -20}, {80, 5}, {10, 60}}, // large coverage
+		{{20, -15}, {60, 15}, {20, 55}}, // tall slice through crop
+		{{39, 29}, {80, 29}, {39, 80}},  // tiny corner overlap
+
+		{{-15, 12}, {15, 32}, {30, -8}}, // left lean slice
+		{{18, -8}, {22, 42}, {55, 18}},  // thin vertical through center
+		{{5, 28}, {35, 28}, {20, 55}},   // top band
+
+	}
+
+	targetColor = color.RGBA{R: 255, G: 255, B: 0, A: 255}  // yellow
+	cropColor = color.RGBA{R: 0, G: 0, B: 0, A: 255}        // black
+	highlightColor = color.RGBA{R: 255, G: 0, B: 0, A: 255} // red
+
+	for i, tri := range triangles {
+		idx := i
+
+		t.Run(fmt.Sprintf("triangle_%02d", idx+1), func(t *testing.T) {
+			poly, err := newClip(tri, crop)
 
 			if err != nil {
 				t.Fatalf("crop failed: %v", err)
@@ -454,11 +515,16 @@ func TestPointOfSegemtn(t *testing.T) {
 }
 
 func Test_newClip(t *testing.T) {
+	// // {{-10, -10}, {20, 10}, {0, 30}}, // edge case 2
+	// tri := Polygon{
+	// 	{-10, -10}, {20, 10}, {0, 30}, // edge case 2
+	// }
+	// clip := Polygon{{0, 0}, {40, 0}, {40, 30}, {0, 30}}
 
 	tri := Polygon{
-		{4, 1, 0},
-		{0, 0, 0},
-		{3, -2, 0},
+		{1, 0, 0},
+		{2, -1, 0},
+		{2, 1, 0},
 	}
 	clip := Polygon{
 		{0, -3, 0},
@@ -466,24 +532,25 @@ func Test_newClip(t *testing.T) {
 		{3, 0, 0},
 		{0, 0, 0},
 	}
-
 	idGen := &idGenerator{}
 
 	targetNodes := makeShapeWithID(tri, true, idGen)
 	clipNodes := makeShapeWithID(clip, false, idGen)
 
-	areAllInside := classifyNodes(targetNodes, clipNodes)
+	areAllInside := setIsInside(targetNodes, clipNodes)
 	if areAllInside {
+		// triangulte
 	}
-	areAllInside = classifyNodes(clipNodes, targetNodes)
+	areAllInside = setIsInside(clipNodes, targetNodes)
 	if areAllInside {
+		// triangulte
 	}
 
 	clipEdges := edges(clipNodes)
 	targetNodes, clipEdges = intersectPointOnEdge(targetNodes, clipEdges)
 
 	targetEdges := edges(targetNodes)
-	targetEdges, clipEdges = intersect(targetEdges, clipEdges)
+	targetEdges, clipEdges = intersect(targetEdges, clipEdges, idGen)
 
 	allEdges := make([][]*node, 0, len(targetEdges)+len(clipEdges))
 	allEdges = append(allEdges, targetEdges...)
@@ -491,15 +558,34 @@ func Test_newClip(t *testing.T) {
 
 	// TEMP
 
-	allRelevant := [][]*node{}
+	allRelevant := make([][]*node, 0, len(allEdges))
 	for _, e := range allEdges {
-
 		if e[0].isInside && e[1].isInside {
 			allRelevant = append(allRelevant, e)
 		}
 	}
 
-	//TEMP
+	adjMap := make(map[*node][]*node)
+	for _, edge := range allRelevant {
+		adjMap[edge[0]] = append(adjMap[edge[0]], edge[1])
+		adjMap[edge[1]] = append(adjMap[edge[1]], edge[0])
+	}
+
+	for k, v := range adjMap {
+		fmt.Printf("k.id: %v\n", k.id)
+		for i, c := range v {
+			fmt.Printf("v%v: %v\n", i, c.id)
+		}
+	}
+
+	// startNode := allRelevant[0][0]
+	// loop := []*node{}
+	// curr := adjMap[startNode][0]
+	// loop = append(loop, curr)
+	// next := adjMap[curr][0]
+	// adjMap[curr] = nil
+	// for range len(adjMap) {
+	// }
 
 	allNodes := make([]*node, 0, len(targetNodes)+len(clipNodes))
 	seen := make(map[*node]struct{}, len(targetNodes)+len(clipNodes))
@@ -536,6 +622,100 @@ func Test_newClip(t *testing.T) {
 	}
 
 	// allIntersections
+
+}
+func Test_newClip_2(t *testing.T) {
+
+	tri := Polygon{
+		{2, 1, 0},
+		{1, 0, 0},
+		{2, -2, 0},
+	}
+	clip := Polygon{
+		{0, -3, 0},
+		{3, -3, 0},
+		{3, 0, 0},
+		{0, 0, 0},
+	}
+
+	ps, _ := newClip(tri, clip)
+
+	filename := filepath.Join("test_output", "newclip_triangles.png")
+	if err := saveTriangleCropPNG(filename, clip, tri, ps); err != nil {
+		t.Fatalf("save png: %v", err)
+	}
+
+}
+
+func newClip(tri, clip Polygon) (Polygons, error) {
+
+	idGen := &idGenerator{}
+
+	targetNodes := makeShapeWithID(tri, true, idGen)
+	clipNodes := makeShapeWithID(clip, false, idGen)
+
+	areAllInside := setIsInside(targetNodes, clipNodes)
+	if areAllInside {
+		triangulate(targetNodes)
+	}
+	areAllInside = setIsInside(clipNodes, targetNodes)
+	if areAllInside {
+		triangulate(clipNodes)
+	}
+
+	clipEdges := edges(clipNodes)
+	targetNodes, clipEdges = intersectPointOnEdge(targetNodes, clipEdges)
+
+	targetEdges := edges(targetNodes)
+	targetEdges, clipEdges = intersect(targetEdges, clipEdges, idGen)
+
+	allEdges := make([][]*node, 0, len(targetEdges)+len(clipEdges))
+	allEdges = append(allEdges, targetEdges...)
+	allEdges = append(allEdges, clipEdges...)
+
+	// TEMP
+
+	allRelevant := make([][]*node, 0, len(allEdges))
+	for _, e := range allEdges {
+		if e[0].isInside && e[1].isInside {
+			allRelevant = append(allRelevant, e)
+		}
+	}
+
+	adjMap := make(map[*node][]*node)
+	for _, edge := range allRelevant {
+		adjMap[edge[0]] = append(adjMap[edge[0]], edge[1])
+		adjMap[edge[1]] = append(adjMap[edge[1]], edge[0])
+	}
+
+	// Build the loop starting from first node
+	loop := make([]*node, 0, len(allRelevant)+1)
+	loop = append(loop, allRelevant[0][0])
+	prev := allRelevant[0][0]
+	current := allRelevant[0][1]
+
+	for current != loop[0] {
+		loop = append(loop, current)
+
+		// Find next node (the neighbor that isn't prev)
+		neighbors := adjMap[current]
+		var next *node
+		for _, neighbor := range neighbors {
+			if neighbor != prev {
+				next = neighbor
+				break
+			}
+		}
+
+		prev = current
+		current = next
+	}
+
+	if len(loop) != len(allRelevant) {
+		// log.Fatalf("loop incomplete: visited %d nodes but have %d edges", len(loop), len(allRelevant))
+	}
+
+	return triangulate(loop)
 
 }
 
@@ -580,7 +760,7 @@ func intersectPointOnEdge(targetNodes []*node, clip [][]*node) ([]*node, [][]*no
 
 }
 
-func intersect(target, clip [][]*node) ([][]*node, [][]*node) {
+func intersect(target, clip [][]*node, id *idGenerator) ([][]*node, [][]*node) {
 
 	for i := 0; i < len(clip); i++ {
 		edge1 := clip[i]
@@ -591,6 +771,8 @@ func intersect(target, clip [][]*node) ([][]*node, [][]*node) {
 			intNode := findIntersect(edge1, edge2)
 
 			if intNode != nil {
+
+				intNode.id = id.Next()
 
 				relink(intNode, edge1[0], edge1[1], edge2[0], edge2[1])
 

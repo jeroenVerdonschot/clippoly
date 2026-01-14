@@ -29,7 +29,7 @@ func (g *idGenerator) Next() int {
 	return g.current
 }
 
-func classifyNodes(nodes []*node, polygon []*node) bool {
+func setIsInside(nodes []*node, polygon []*node) bool {
 	c := 0
 	for _, n := range nodes {
 		if isInsideNodes(n, polygon) {
@@ -98,11 +98,11 @@ func Clip(target, clip Polygon) (triangles Polygons, err error) {
 	targetNodes := makeShapeWithID(target, true, idGen)
 	clipNodes := makeShapeWithID(clip, false, idGen)
 
-	areAllInside := classifyNodes(targetNodes, clipNodes)
+	areAllInside := setIsInside(targetNodes, clipNodes)
 	if areAllInside {
 		return triangulate(targetNodes) // loop is clippoly
 	}
-	areAllInside = classifyNodes(clipNodes, targetNodes)
+	areAllInside = setIsInside(clipNodes, targetNodes)
 	if areAllInside {
 		return triangulate(clipNodes)
 	}
@@ -431,6 +431,11 @@ func isInsideNodes(n1 *node, n2 []*node) bool {
 		}
 
 		if pointOnEdge(px, py, x1, y1, x2, y2) {
+			return true
+		}
+
+		if (math.Abs(px-x1) < eps && math.Abs(py-y1) < eps) ||
+			(math.Abs(px-x2) < eps && math.Abs(py-y2) < eps) {
 			return true
 		}
 
