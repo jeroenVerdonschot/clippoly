@@ -2,6 +2,7 @@ package clippoly
 
 import (
 	"fmt"
+	"log"
 	"math"
 )
 
@@ -403,6 +404,217 @@ func triangulate(nodes []*node) (Polygons, error) {
 	}
 
 	return triangles, nil
+}
+
+func edges(nodes []*node) [][]*node {
+
+	ln := len(nodes)
+	if ln < 2 {
+		return nil
+	}
+
+	list := make([][]*node, 0, ln)
+	for i := 0; i < ln; i++ {
+		next := i + 1
+		if next == ln {
+			next = 0
+		}
+		list = append(list, []*node{nodes[i], nodes[next]})
+	}
+
+	return list
+
+}
+
+func mergeCoincidentNodes(targetNodes, clipNodes []*node) {
+	targetByCoord := make(map[Coord]*node, len(targetNodes))
+	for _, tn := range targetNodes {
+		targetByCoord[tn.coord] = tn
+	}
+	for i, cn := range clipNodes {
+		tn, ok := targetByCoord[cn.coord]
+		if !ok || tn == cn {
+			continue
+		}
+		clipNodes[i] = tn
+		for _, nb := range cn.nodes {
+			if nb == nil || nb == tn {
+				continue
+			}
+			nb.remove(cn)
+			if !nodeContains(nb.nodes, tn) {
+				nb.add(tn)
+			}
+			if !nodeContains(tn.nodes, nb) {
+				tn.add(nb)
+			}
+		}
+		tn.isInside = tn.isInside || cn.isInside
+		cn.nodes = nil
+	}
+}
+
+func nodeContains(nodes []*node, target *node) bool {
+	for _, n := range nodes {
+		if n == target {
+			return true
+		}
+	}
+	return false
+}
+
+func intersectPointOnEdge(targetNodes []*node, clip [][]*node) ([]*node, [][]*node) {
+
+	// check is targe node lay on a clip edge (pointonedge)
+	// if so add node to target and to clip
+	// set isInside true
+
+	for _, tn := range targetNodes {
+		px := tn.coord[0]
+		py := tn.coord[1]
+		for i := 0; i < len(clip); i++ {
+			edge := clip[i]
+			if len(edge) < 2 || edge[0] == nil || edge[1] == nil {
+				continue
+			}
+			a := edge[0]
+			b := edge[1]
+			if tn.coord == a.coord || tn.coord == b.coord {
+				tn.isInside = true
+				continue
+			}
+			if !pointOnEdge(px, py, a.coord[0], a.coord[1], b.coord[0], b.coord[1]) {
+				continue
+			}
+
+			tn.isInside = true
+			clip[i] = []*node{a, tn}
+			clip = append(clip, []*node{tn, b})
+
+			a.remove(b)
+			b.remove(a)
+			a.add(tn)
+			b.add(tn)
+			tn.add(a)
+			tn.add(b)
+		}
+	}
+
+	return targetNodes, clip
+
+}
+
+func intersect(target, clip [][]*node, id *idGenerator) ([][]*node, [][]*node) {
+
+	for i := 0; i < len(clip); i++ {
+		edge1 := clip[i]
+
+		for j := 0; j < len(target); j++ {
+			edge2 := target[j]
+
+			intNode := findIntersect(edge1, edge2)
+
+			if intNode != nil {
+
+				intNode.id = id.Next()
+
+				relink(intNode, edge1[0], edge1[1], edge2[0], edge2[1])
+
+				edge1End := edge1[1]
+				edge2End := edge2[1]
+
+				edge1[1] = intNode
+				clip[i] = edge1
+				clip = append(clip, []*node{intNode, edge1End})
+				edge2[1] = intNode
+				target[j] = edge2
+				target = append(target, []*node{intNode, edge2End})
+				// reset for loop
+				i = -1
+				break
+			}
+
+		}
+
+	}
+
+	return target, clip
+
+}
+
+func newClip(tri, clip Polygon) (Polygons, error) {
+
+	idGen := &idGenerator{}
+
+	targetNodes := makeShapeWithID(tri, true, idGen)
+	clipNodes := makeShapeWithID(clip, false, idGen)
+
+	areAllInside := setIsInside(targetNodes, clipNodes)
+	if areAllInside {
+		return triangulate(targetNodes)
+	}
+	areAllInside = setIsInside(clipNodes, targetNodes)
+	if areAllInside {
+		return triangulate(clipNodes)
+	}
+
+	mergeCoincidentNodes(targetNodes, clipNodes)
+
+	clipEdges := edges(clipNodes)
+	targetNodes, clipEdges = intersectPointOnEdge(targetNodes, clipEdges)
+
+	targetEdges := edges(targetNodes)
+	targetEdges, clipEdges = intersect(targetEdges, clipEdges, idGen)
+
+	allEdges := make([][]*node, 0, len(targetEdges)+len(clipEdges))
+	allEdges = append(allEdges, targetEdges...)
+	allEdges = append(allEdges, clipEdges...)
+
+	// TEMP
+
+	allRelevant := make([][]*node, 0, len(allEdges))
+	for _, e := range allEdges {
+		if e[0].isInside && e[1].isInside {
+			allRelevant = append(allRelevant, e)
+		}
+	}
+
+	adjMap := make(map[*node][]*node)
+	for _, edge := range allRelevant {
+		adjMap[edge[0]] = append(adjMap[edge[0]], edge[1])
+		adjMap[edge[1]] = append(adjMap[edge[1]], edge[0])
+	}
+
+	// Build the loop starting from first node
+	loop := make([]*node, 0, len(allRelevant)+1)
+	loop = append(loop, allRelevant[0][0])
+	prev := allRelevant[0][0]
+	current := allRelevant[0][1]
+
+	// todo add safety max len(target)*len(clip)*2 iterations
+	for current != loop[0] {
+		loop = append(loop, current)
+
+		// Find next node (the neighbor that isn't prev)
+		neighbors := adjMap[current]
+		var next *node
+		for _, neighbor := range neighbors {
+			if neighbor != prev {
+				next = neighbor
+				break
+			}
+		}
+
+		prev = current
+		current = next
+	}
+
+	if len(loop) != len(allRelevant) {
+		log.Fatalf("loop incomplete: visited %d nodes but have %d edges", len(loop), len(allRelevant))
+	}
+
+	return triangulate(loop)
+
 }
 
 func isInsideNodes(n1 *node, n2 []*node) bool {

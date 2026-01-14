@@ -3,7 +3,6 @@ package clippoly
 import (
 	"fmt"
 	"image/color"
-	"log"
 	"math"
 	"path/filepath"
 	"testing"
@@ -11,8 +10,6 @@ import (
 
 func TestMultipleTriangleCropsWithPalette_newClip(t *testing.T) {
 	crop := Polygon{{0, 0}, {40, 0}, {40, 30}, {0, 30}}
-
-	// 3 and 7 give misktake
 
 	triangles := []Polygon{
 		{{-10, -10}, {20, 10}, {10, 30}}, // bottom-left corner, edge case 1
@@ -130,15 +127,6 @@ func TestRelinkSameCoordsAsFrom(t *testing.T) {
 		!nodeContains(newNode.nodes, cross2) {
 		t.Fatalf("new node links incorrect")
 	}
-}
-
-func nodeContains(nodes []*node, target *node) bool {
-	for _, n := range nodes {
-		if n == target {
-			return true
-		}
-	}
-	return false
 }
 
 func TestClipMeshFaces(t *testing.T) {
@@ -282,68 +270,6 @@ func Test_meshWithReturnNewMesh(t *testing.T) {
 	filename := filepath.Join("test_output", "mesh_clip.png")
 	if err := saveMeshClipPNG(filename, vertices, faces, clip, newVerts, newFaces); err != nil {
 		t.Fatalf("save mesh png: %v", err)
-	}
-}
-
-func TestClipMesh_RemovesNonIntersectingFaces(t *testing.T) {
-	vertices := []Coord{
-		{82.453125, -334.59375, 14.700125},
-		{86.828125, -347.40625, 14.700125},
-		{91.328125, -327.0625, 14.700125},
-		{114.859375, -320.0625, 14.700125},
-	}
-	faces := [][3]int{
-		{0, 1, 2},
-		{3, 2, 1},
-	}
-	clip := Polygon{
-		{0, -305.21875, 0},
-		{344.89062, -305.21875, 0},
-		{344.89062, 0, 0},
-		{0, 0, 0},
-	}
-
-	clippedVerts, clippedFaces, err := ClipMesh(vertices, faces, clip)
-	if err != nil {
-		t.Fatalf("clip mesh: %v", err)
-	}
-	if len(clippedVerts) != 0 {
-		t.Fatalf("expected no vertices after clipping, got %d", len(clippedVerts))
-	}
-	if len(clippedFaces) != 0 {
-		t.Fatalf("expected no faces after clipping, got %d", len(clippedFaces))
-	}
-
-	filename := filepath.Join("test_output", "mesh_clip_bug.png")
-	if err := saveMeshClipPNG(filename, vertices, faces, clip, clippedVerts, clippedFaces); err != nil {
-		t.Fatalf("save mesh png: %v", err)
-	}
-}
-
-func TestClip_TriangleNearEdge(t *testing.T) {
-	tri := Polygon{
-		{1, 0, 0},
-		{2, -1, 0},
-		{2, 1, 0},
-	}
-	clip := Polygon{
-		{0, -3, 0},
-		{3, -3, 0},
-		{3, 0, 0},
-		{0, 0, 0},
-	}
-
-	clipped, err := Clip(tri, clip)
-	if err != nil {
-		t.Fatalf("clip triangle: %v", err)
-	}
-	if clipped == nil {
-		t.Fatalf("expected clipped triangle, got nil")
-	}
-
-	filename := filepath.Join("test_output", "triangle_clip_edge.png")
-	if err := saveTriangleCropPNG(filename, clip, tri, clipped); err != nil {
-		t.Fatalf("save png: %v", err)
 	}
 }
 
@@ -581,208 +507,6 @@ func Test_newClip_2(t *testing.T) {
 	if err := saveTriangleCropPNG(filename, clip, tri, ps); err != nil {
 		t.Fatalf("save png: %v", err)
 	}
-
-}
-
-func newClip(tri, clip Polygon) (Polygons, error) {
-
-	idGen := &idGenerator{}
-
-	targetNodes := makeShapeWithID(tri, true, idGen)
-	clipNodes := makeShapeWithID(clip, false, idGen)
-
-	areAllInside := setIsInside(targetNodes, clipNodes)
-	if areAllInside {
-		return triangulate(targetNodes)
-	}
-	areAllInside = setIsInside(clipNodes, targetNodes)
-	if areAllInside {
-		return triangulate(clipNodes)
-	}
-
-	mergeCoincidentNodes(targetNodes, clipNodes)
-
-	clipEdges := edges(clipNodes)
-	targetNodes, clipEdges = intersectPointOnEdge(targetNodes, clipEdges)
-
-	targetEdges := edges(targetNodes)
-	targetEdges, clipEdges = intersect(targetEdges, clipEdges, idGen)
-
-	allEdges := make([][]*node, 0, len(targetEdges)+len(clipEdges))
-	allEdges = append(allEdges, targetEdges...)
-	allEdges = append(allEdges, clipEdges...)
-
-	// TEMP
-
-	allRelevant := make([][]*node, 0, len(allEdges))
-	for _, e := range allEdges {
-		if e[0].isInside && e[1].isInside {
-			allRelevant = append(allRelevant, e)
-		}
-	}
-
-	adjMap := make(map[*node][]*node)
-	for _, edge := range allRelevant {
-		adjMap[edge[0]] = append(adjMap[edge[0]], edge[1])
-		adjMap[edge[1]] = append(adjMap[edge[1]], edge[0])
-	}
-
-	// Build the loop starting from first node
-	loop := make([]*node, 0, len(allRelevant)+1)
-	loop = append(loop, allRelevant[0][0])
-	prev := allRelevant[0][0]
-	current := allRelevant[0][1]
-
-	// todo add safety max len(target)*len(clip)*2 iterations
-	for current != loop[0] {
-		loop = append(loop, current)
-
-		// Find next node (the neighbor that isn't prev)
-		neighbors := adjMap[current]
-		var next *node
-		for _, neighbor := range neighbors {
-			if neighbor != prev {
-				next = neighbor
-				break
-			}
-		}
-
-		prev = current
-		current = next
-	}
-
-	if len(loop) != len(allRelevant) {
-		log.Fatalf("loop incomplete: visited %d nodes but have %d edges", len(loop), len(allRelevant))
-	}
-
-	return triangulate(loop)
-
-}
-
-func mergeCoincidentNodes(targetNodes, clipNodes []*node) {
-	targetByCoord := make(map[Coord]*node, len(targetNodes))
-	for _, tn := range targetNodes {
-		targetByCoord[tn.coord] = tn
-	}
-	for i, cn := range clipNodes {
-		tn, ok := targetByCoord[cn.coord]
-		if !ok || tn == cn {
-			continue
-		}
-		clipNodes[i] = tn
-		for _, nb := range cn.nodes {
-			if nb == nil || nb == tn {
-				continue
-			}
-			nb.remove(cn)
-			if !nodeContains(nb.nodes, tn) {
-				nb.add(tn)
-			}
-			if !nodeContains(tn.nodes, nb) {
-				tn.add(nb)
-			}
-		}
-		tn.isInside = tn.isInside || cn.isInside
-		cn.nodes = nil
-	}
-}
-
-func intersectPointOnEdge(targetNodes []*node, clip [][]*node) ([]*node, [][]*node) {
-
-	// check is targe node lay on a clip edge (pointonedge)
-	// if so add node to target and to clip
-	// set isInside true
-
-	for _, tn := range targetNodes {
-		px := tn.coord[0]
-		py := tn.coord[1]
-		for i := 0; i < len(clip); i++ {
-			edge := clip[i]
-			if len(edge) < 2 || edge[0] == nil || edge[1] == nil {
-				continue
-			}
-			a := edge[0]
-			b := edge[1]
-			if tn.coord == a.coord || tn.coord == b.coord {
-				tn.isInside = true
-				continue
-			}
-			if !pointOnEdge(px, py, a.coord[0], a.coord[1], b.coord[0], b.coord[1]) {
-				continue
-			}
-
-			tn.isInside = true
-			clip[i] = []*node{a, tn}
-			clip = append(clip, []*node{tn, b})
-
-			a.remove(b)
-			b.remove(a)
-			a.add(tn)
-			b.add(tn)
-			tn.add(a)
-			tn.add(b)
-		}
-	}
-
-	return targetNodes, clip
-
-}
-
-func intersect(target, clip [][]*node, id *idGenerator) ([][]*node, [][]*node) {
-
-	for i := 0; i < len(clip); i++ {
-		edge1 := clip[i]
-
-		for j := 0; j < len(target); j++ {
-			edge2 := target[j]
-
-			intNode := findIntersect(edge1, edge2)
-
-			if intNode != nil {
-
-				intNode.id = id.Next()
-
-				relink(intNode, edge1[0], edge1[1], edge2[0], edge2[1])
-
-				edge1End := edge1[1]
-				edge2End := edge2[1]
-
-				edge1[1] = intNode
-				clip[i] = edge1
-				clip = append(clip, []*node{intNode, edge1End})
-				edge2[1] = intNode
-				target[j] = edge2
-				target = append(target, []*node{intNode, edge2End})
-				// reset for loop
-				i = -1
-				break
-			}
-
-		}
-
-	}
-
-	return target, clip
-
-}
-
-func edges(nodes []*node) [][]*node {
-
-	ln := len(nodes)
-	if ln < 2 {
-		return nil
-	}
-
-	list := make([][]*node, 0, ln)
-	for i := 0; i < ln; i++ {
-		next := i + 1
-		if next == ln {
-			next = 0
-		}
-		list = append(list, []*node{nodes[i], nodes[next]})
-	}
-
-	return list
 
 }
 
