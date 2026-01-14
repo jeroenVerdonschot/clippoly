@@ -3,70 +3,11 @@ package clippoly
 import (
 	"fmt"
 	"image/color"
+	"log"
 	"math"
 	"path/filepath"
 	"testing"
 )
-
-func TestMultipleTriangleCropsWithPalette(t *testing.T) {
-	crop := Polygon{{0, 0}, {40, 0}, {40, 30}, {0, 30}}
-
-	// 3 and 7 give misktake
-
-	triangles := []Polygon{
-		// {{-10, -10}, {20, 10}, {10, 30}}, // bottom-left corner, edge case
-		// {{-10, -10}, {20, 10}, {0, 30}},  // edge case 2
-
-		// {{-10, 10}, {20, 10}, {10, 25}}, // left edge
-		// {{10, -5}, {30, 10}, {20, 20}},  // bottom edge
-		// {{-10, 20}, {30, 40}, {20, 15}}, // top-left edge
-		// {{10, 20}, {30, 40}, {20, 15}},  // top edge !!!!
-		// {{45, 10}, {20, 25}, {35, 35}},  // right edge !!!!
-		// {{35, -5}, {50, 15}, {25, 20}},  // bottom-right corner !!!!
-		// {{-10, 25}, {10, 40}, {20, 10}}, // left-top corner
-		// {{15, 5}, {45, 20}, {25, 35}},   // right-top corner
-		// {{5, 35}, {30, 20}, {-10, 20}},  // top overshoot !!!!
-		// {{20, 10}, {50, 20}, {30, 40}},  // right overshoot
-		// {{-5, -2}, {15, 10}, {25, -8}},  // bottom overshoot !!!
-		// {{38, 2}, {50, 25}, {20, 32}},   // right-top slice
-
-		// {{5, 5}, {35, 5}, {20, 25}},     // fully inside crop
-		// {{0, 0}, {40, 0}, {0, 30}},      // along crop edges
-		// {{-20, -20}, {80, 5}, {10, 60}}, // large coverage
-		{{20, -15}, {60, 15}, {20, 55}}, // tall slice through crop
-		// {{39, 29}, {80, 29}, {39, 80}}, // tiny corner overlap
-
-		// {{-15, 12}, {15, 32}, {30, -8}}, // left lean slice
-		// {{18, -8}, {22, 42}, {55, 18}},  // thin vertical through center
-		// {{5, 28}, {35, 28}, {20, 55}},   // top band
-
-	}
-
-	targetColor = color.RGBA{R: 255, G: 255, B: 0, A: 255}  // yellow
-	cropColor = color.RGBA{R: 0, G: 0, B: 0, A: 255}        // black
-	highlightColor = color.RGBA{R: 255, G: 0, B: 0, A: 255} // red
-
-	for i, tri := range triangles {
-		idx := i
-
-		t.Run(fmt.Sprintf("triangle_%02d", idx+1), func(t *testing.T) {
-			poly, err := Clip(tri, crop)
-
-			if err != nil {
-				t.Fatalf("crop failed: %v", err)
-			}
-			if poly == nil {
-				t.Fatalf("expected cropped triangles for triangle_%02d", idx+1)
-			}
-
-			filename := filepath.Join("test_output", fmt.Sprintf("triangle_%02d.png", idx+1))
-			if err := saveTriangleCropPNG(filename, crop, tri, poly); err != nil {
-				t.Fatalf("save png: %v", err)
-			}
-
-		})
-	}
-}
 
 func TestMultipleTriangleCropsWithPalette_newClip(t *testing.T) {
 	crop := Polygon{{0, 0}, {40, 0}, {40, 30}, {0, 30}}
@@ -74,32 +15,28 @@ func TestMultipleTriangleCropsWithPalette_newClip(t *testing.T) {
 	// 3 and 7 give misktake
 
 	triangles := []Polygon{
-		{{-10, -10}, {20, 10}, {10, 30}}, // bottom-left corner, edge case
+		{{-10, -10}, {20, 10}, {10, 30}}, // bottom-left corner, edge case 1
 		{{-10, -10}, {20, 10}, {0, 30}},  // edge case 2
-		{{20, -15}, {60, 15}, {20, 55}},
-
-		{{-10, 10}, {20, 10}, {10, 25}}, // left edge
-		{{10, -5}, {30, 10}, {20, 20}},  // bottom edge
-		{{-10, 20}, {30, 40}, {20, 15}}, // top-left edge
-		{{10, 20}, {30, 40}, {20, 15}},  // top edge !!!!
-		{{45, 10}, {20, 25}, {35, 35}},  // right edge !!!!
-		{{35, -5}, {50, 15}, {25, 20}},  // bottom-right corner !!!!
-		{{-10, 25}, {10, 40}, {20, 10}}, // left-top corner
-		{{15, 5}, {45, 20}, {25, 35}},   // right-top corner
-		{{5, 35}, {30, 20}, {-10, 20}},  // top overshoot !!!!
-		{{20, 10}, {50, 20}, {30, 40}},  // right overshoot
-		{{-5, -2}, {15, 10}, {25, -8}},  // bottom overshoot !!!
-		{{38, 2}, {50, 25}, {20, 32}},   // right-top slice
-
-		{{5, 5}, {35, 5}, {20, 25}},     // fully inside crop
-		{{0, 0}, {40, 0}, {0, 30}},      // along crop edges
-		{{-20, -20}, {80, 5}, {10, 60}}, // large coverage
-		{{20, -15}, {60, 15}, {20, 55}}, // tall slice through crop
-		{{39, 29}, {80, 29}, {39, 80}},  // tiny corner overlap
-
-		{{-15, 12}, {15, 32}, {30, -8}}, // left lean slice
-		{{18, -8}, {22, 42}, {55, 18}},  // thin vertical through center
-		{{5, 28}, {35, 28}, {20, 55}},   // top band
+		{{-10, 10}, {20, 10}, {10, 25}},  // left edge 3
+		{{10, -5}, {30, 10}, {20, 20}},   // bottom edge 4
+		{{-10, 20}, {30, 40}, {20, 15}},  // top-left edge 5
+		{{10, 20}, {30, 40}, {20, 15}},   // top edge !!!! 6
+		{{45, 10}, {20, 25}, {35, 35}},   // right edge !!!! 7
+		{{35, -5}, {50, 15}, {25, 20}},   // bottom-right corner !!!! 8
+		{{-10, 25}, {10, 40}, {20, 10}},  // left-top corner 9
+		{{15, 5}, {45, 20}, {25, 35}},    // right-top corner 10
+		{{5, 35}, {30, 20}, {-10, 20}},   // top overshoot !!!! 11
+		{{20, 10}, {50, 20}, {30, 40}},   // right overshoot 12
+		{{-5, -2}, {15, 10}, {25, -8}},   // bottom overshoot !!! 13
+		{{38, 2}, {50, 25}, {20, 32}},    // right-top slice 14
+		{{5, 5}, {35, 5}, {20, 25}},      // fully inside crop 15
+		{{0, 0}, {40, 0}, {0, 30}},       // along crop edges 16
+		{{-20, -20}, {80, 5}, {10, 60}},  // large coverage 17
+		{{20, -15}, {60, 15}, {20, 55}},  // tall slice through crop 18
+		{{39, 29}, {80, 29}, {39, 80}},   // tiny corner overlap 19
+		{{-15, 12}, {15, 32}, {30, -8}},  // left lean slice 20
+		{{18, -8}, {22, 42}, {55, 18}},   // thin vertical through center 21
+		{{5, 28}, {35, 28}, {20, 55}},    // top band 22
 
 	}
 
@@ -656,12 +593,14 @@ func newClip(tri, clip Polygon) (Polygons, error) {
 
 	areAllInside := setIsInside(targetNodes, clipNodes)
 	if areAllInside {
-		triangulate(targetNodes)
+		return triangulate(targetNodes)
 	}
 	areAllInside = setIsInside(clipNodes, targetNodes)
 	if areAllInside {
-		triangulate(clipNodes)
+		return triangulate(clipNodes)
 	}
+
+	mergeCoincidentNodes(targetNodes, clipNodes)
 
 	clipEdges := edges(clipNodes)
 	targetNodes, clipEdges = intersectPointOnEdge(targetNodes, clipEdges)
@@ -694,6 +633,7 @@ func newClip(tri, clip Polygon) (Polygons, error) {
 	prev := allRelevant[0][0]
 	current := allRelevant[0][1]
 
+	// todo add safety max len(target)*len(clip)*2 iterations
 	for current != loop[0] {
 		loop = append(loop, current)
 
@@ -712,11 +652,39 @@ func newClip(tri, clip Polygon) (Polygons, error) {
 	}
 
 	if len(loop) != len(allRelevant) {
-		// log.Fatalf("loop incomplete: visited %d nodes but have %d edges", len(loop), len(allRelevant))
+		log.Fatalf("loop incomplete: visited %d nodes but have %d edges", len(loop), len(allRelevant))
 	}
 
 	return triangulate(loop)
 
+}
+
+func mergeCoincidentNodes(targetNodes, clipNodes []*node) {
+	targetByCoord := make(map[Coord]*node, len(targetNodes))
+	for _, tn := range targetNodes {
+		targetByCoord[tn.coord] = tn
+	}
+	for i, cn := range clipNodes {
+		tn, ok := targetByCoord[cn.coord]
+		if !ok || tn == cn {
+			continue
+		}
+		clipNodes[i] = tn
+		for _, nb := range cn.nodes {
+			if nb == nil || nb == tn {
+				continue
+			}
+			nb.remove(cn)
+			if !nodeContains(nb.nodes, tn) {
+				nb.add(tn)
+			}
+			if !nodeContains(tn.nodes, nb) {
+				tn.add(nb)
+			}
+		}
+		tn.isInside = tn.isInside || cn.isInside
+		cn.nodes = nil
+	}
 }
 
 func intersectPointOnEdge(targetNodes []*node, clip [][]*node) ([]*node, [][]*node) {
