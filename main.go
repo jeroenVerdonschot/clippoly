@@ -6,6 +6,11 @@ import (
 	"math"
 )
 
+const (
+	eps    = 1e-9
+	denEps = 1e-12
+)
+
 type Coord [3]float64
 
 type Polygon []Coord
@@ -731,19 +736,10 @@ func findIntersect(edge1 []*node, edge2 []*node) *node {
 }
 
 func pointOnEdge(px, py, x1, y1, x2, y2 float64) bool {
-	// Cross product for collinearity
-	cross := (x2-x1)*(py-y1) - (y2-y1)*(px-x1)
-	if math.Abs(cross) > 1e-9 {
+	if px < math.Min(x1, x2)-eps || px > math.Max(x1, x2)+eps ||
+		py < math.Min(y1, y2)-eps || py > math.Max(y1, y2)+eps {
 		return false
 	}
-	// Check if point is within bounding box
-	minX, maxX := x1, x2
-	if minX > maxX {
-		minX, maxX = maxX, minX
-	}
-	minY, maxY := y1, y2
-	if minY > maxY {
-		minY, maxY = maxY, minY
-	}
-	return px >= minX && px <= maxX && py >= minY && py <= maxY
+	cross := (x2-x1)*(py-y1) - (y2-y1)*(px-x1)
+	return math.Abs(cross) < eps
 }
