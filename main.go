@@ -74,48 +74,6 @@ func relink(new, from, to, cross1, cross2 *node) {
 
 // find all intersetions
 
-func Clip(target, clip Polygon) (triangles Polygons, err error) {
-
-	if len(target) < 3 {
-		return nil, fmt.Errorf("target polygon must have at least 3 vertices, got %d", len(target))
-	}
-	if len(clip) < 3 {
-		return nil, fmt.Errorf("clip polygon must have at least 3 vertices, got %d", len(clip))
-	}
-
-	// Early exit: check if polygons don't intersect at all
-	if !polygonsIntersect(target, clip) { // TODO check if improvemnt
-		// Check if target is completely inside or outside clip
-		if isInsidePolygon(target[0], clip) {
-			// Target is completely inside clip, return triangulated target
-			return triangulatePolygon(target), nil
-		}
-		// Target is completely outside clip, return empty
-		return triangulatePolygon(clip), nil
-	}
-
-	idGen := &idGenerator{}
-
-	targetNodes := makeShapeWithID(target, true, idGen)
-	clipNodes := makeShapeWithID(clip, false, idGen)
-
-	areAllInside := setIsInside(targetNodes, clipNodes)
-	if areAllInside {
-		return triangulate(targetNodes) // loop is clippoly
-	}
-	areAllInside = setIsInside(clipNodes, targetNodes)
-	if areAllInside {
-		return triangulate(clipNodes)
-	}
-
-	loop, err := traceIntersectionLoop(targetNodes, clipNodes, idGen)
-	if err != nil {
-		return nil, err
-	}
-
-	return triangulate(loop)
-}
-
 // polygonsIntersect checks if two polygons have any edge intersections
 func polygonsIntersect(poly1, poly2 Polygon) bool {
 	// First check bounding boxes for quick rejection
@@ -542,7 +500,7 @@ func intersect(target, clip [][]*node, id *idGenerator) ([][]*node, [][]*node) {
 
 }
 
-func newClip(tri, clip Polygon) (Polygons, error) {
+func Clip(tri, clip Polygon) (Polygons, error) {
 
 	idGen := &idGenerator{}
 

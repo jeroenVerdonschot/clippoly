@@ -45,7 +45,7 @@ func TestMultipleTriangleCropsWithPalette_newClip(t *testing.T) {
 		idx := i
 
 		t.Run(fmt.Sprintf("triangle_%02d", idx+1), func(t *testing.T) {
-			poly, err := newClip(tri, crop)
+			poly, err := Clip(tri, crop)
 
 			if err != nil {
 				t.Fatalf("crop failed: %v", err)
@@ -501,7 +501,7 @@ func Test_newClip_2(t *testing.T) {
 		{0, 0, 0},
 	}
 
-	ps, _ := newClip(tri, clip)
+	ps, _ := Clip(tri, clip)
 
 	filename := filepath.Join("test_output", "newclip_triangles.png")
 	if err := saveTriangleCropPNG(filename, clip, tri, ps); err != nil {
