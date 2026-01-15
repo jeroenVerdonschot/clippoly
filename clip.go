@@ -1,9 +1,14 @@
-package clippoly
+package clip
 
 import (
 	"fmt"
 	"log"
 	"math"
+)
+
+const (
+	eps    = 1e-9
+	denEps = 1e-12
 )
 
 type Coord [3]float64
@@ -41,18 +46,22 @@ func setIsInside(nodes []*node, polygon []*node) bool {
 	return c == len(nodes)
 }
 
-func (nd *node) remove(n *node) {
-	filtered := make([]*node, 0, len(nd.nodes)-1)
-	for _, t := range nd.nodes {
-		if t.id != n.id {
-			filtered = append(filtered, t)
+func (n *node) add(other *node) {
+	for _, existing := range n.nodes {
+		if existing == other {
+			return
 		}
 	}
-	nd.nodes = filtered
+	n.nodes = append(n.nodes, other)
 }
 
-func (n *node) add(node *node) {
-	n.nodes = append(n.nodes, node)
+func (n *node) remove(other *node) {
+	for i, existing := range n.nodes {
+		if existing == other {
+			n.nodes = append(n.nodes[:i], n.nodes[i+1:]...)
+			return
+		}
+	}
 }
 
 func relink(new, from, to, cross1, cross2 *node) {
@@ -73,6 +82,48 @@ func relink(new, from, to, cross1, cross2 *node) {
 }
 
 // find all intersetions
+
+func Clip(target, clip Polygon) (triangles Polygons, err error) {
+
+	if len(target) < 3 {
+		return nil, fmt.Errorf("target polygon must have at least 3 vertices, got %d", len(target))
+	}
+	if len(clip) < 3 {
+		return nil, fmt.Errorf("clip polygon must have at least 3 vertices, got %d", len(clip))
+	}
+
+	// Early exit: check if polygons don't intersect at all
+	if !polygonsIntersect(target, clip) { // TODO check if improvemnt
+		// Check if target is completely inside or outside clip
+		if isInsidePolygon(target[0], clip) {
+			// Target is completely inside clip, return unedited targer
+			return Polygons{target}, nil
+		}
+		// Target is completely outside clip, return empty
+		return triangulatePolygon(clip), nil
+	}
+
+	idGen := &idGenerator{}
+
+	targetNodes := makeShapeWithID(target, true, idGen)
+	clipNodes := makeShapeWithID(clip, false, idGen)
+
+	areAllInside := setIsInside(targetNodes, clipNodes)
+	if areAllInside {
+		return Polygons{target}, nil
+	}
+	areAllInside = setIsInside(clipNodes, targetNodes)
+	if areAllInside {
+		return triangulate(clipNodes)
+	}
+
+	loop, err := traceIntersectionLoop(targetNodes, clipNodes, idGen)
+	if err != nil {
+		return nil, err
+	}
+
+	return triangulate(loop)
+}
 
 // polygonsIntersect checks if two polygons have any edge intersections
 func polygonsIntersect(poly1, poly2 Polygon) bool {
@@ -191,31 +242,14 @@ func segmentsIntersect(a1, a2, b1, b2 Coord) bool {
 }
 
 // isInsidePolygon checks if a point is inside a polygon
-func isInsidePolygon(point Coord, poly Polygon) bool {
-	if len(poly) < 3 {
-		return false
-	}
-
-	px := float64(point[0])
-	py := float64(point[1])
+func isInsidePolygon(pt Coord, poly Polygon) bool {
 	inside := false
-
-	prev := poly[len(poly)-1]
-	for _, curr := range poly {
-		x1 := float64(prev[0])
-		y1 := float64(prev[1])
-		x2 := float64(curr[0])
-		y2 := float64(curr[1])
-
-		if (y1 > py) != (y2 > py) {
-			xInt := (x2-x1)*(py-y1)/(y2-y1) + x1
-			if px < xInt {
-				inside = !inside
-			}
+	for i, j := 0, len(poly)-1; i < len(poly); j, i = i, i+1 {
+		if ((poly[i][1] > pt[1]) != (poly[j][1] > pt[1])) &&
+			(pt[0] < (poly[j][0]-poly[i][0])*(pt[1]-poly[i][1])/(poly[j][1]-poly[i][1])+poly[i][0]) {
+			inside = !inside
 		}
-		prev = curr
 	}
-
 	return inside
 }
 
@@ -365,12 +399,10 @@ func triangulate(nodes []*node) (Polygons, error) {
 }
 
 func edges(nodes []*node) [][]*node {
-
 	ln := len(nodes)
 	if ln < 2 {
 		return nil
 	}
-
 	list := make([][]*node, 0, ln)
 	for i := 0; i < ln; i++ {
 		next := i + 1
@@ -379,36 +411,27 @@ func edges(nodes []*node) [][]*node {
 		}
 		list = append(list, []*node{nodes[i], nodes[next]})
 	}
-
 	return list
+}
 
+func coordsEqual(a, b Coord) bool {
+	return math.Abs(a[0]-b[0]) < eps && math.Abs(a[1]-b[1]) < eps
 }
 
 func mergeCoincidentNodes(targetNodes, clipNodes []*node) {
-	targetByCoord := make(map[Coord]*node, len(targetNodes))
 	for _, tn := range targetNodes {
-		targetByCoord[tn.coord] = tn
-	}
-	for i, cn := range clipNodes {
-		tn, ok := targetByCoord[cn.coord]
-		if !ok || tn == cn {
-			continue
-		}
-		clipNodes[i] = tn
-		for _, nb := range cn.nodes {
-			if nb == nil || nb == tn {
-				continue
-			}
-			nb.remove(cn)
-			if !nodeContains(nb.nodes, tn) {
-				nb.add(tn)
-			}
-			if !nodeContains(tn.nodes, nb) {
-				tn.add(nb)
+		for i, cn := range clipNodes {
+			if coordsEqual(tn.coord, cn.coord) {
+				// Transfer neighbors and inside status
+				for _, neighbor := range cn.nodes {
+					neighbor.remove(cn)
+					neighbor.add(tn)
+					tn.add(neighbor)
+				}
+				tn.isInside = tn.isInside || cn.isInside
+				clipNodes[i] = tn
 			}
 		}
-		tn.isInside = tn.isInside || cn.isInside
-		cn.nodes = nil
 	}
 }
 
@@ -422,85 +445,72 @@ func nodeContains(nodes []*node, target *node) bool {
 }
 
 func intersectPointOnEdge(targetNodes []*node, clip [][]*node) ([]*node, [][]*node) {
-
-	// check is targe node lay on a clip edge (pointonedge)
-	// if so add node to target and to clip
-	// set isInside true
-
 	for _, tn := range targetNodes {
-		px := tn.coord[0]
-		py := tn.coord[1]
 		for i := 0; i < len(clip); i++ {
 			edge := clip[i]
-			if len(edge) < 2 || edge[0] == nil || edge[1] == nil {
-				continue
-			}
-			a := edge[0]
-			b := edge[1]
-			if tn.coord == a.coord || tn.coord == b.coord {
+			a, b := edge[0], edge[1]
+
+			if coordsEqual(tn.coord, a.coord) || coordsEqual(tn.coord, b.coord) {
 				tn.isInside = true
 				continue
 			}
-			if !pointOnEdge(px, py, a.coord[0], a.coord[1], b.coord[0], b.coord[1]) {
-				continue
+
+			if pointOnEdge(tn.coord[0], tn.coord[1], a.coord[0], a.coord[1], b.coord[0], b.coord[1]) {
+				tn.isInside = true
+				clip[i] = []*node{a, tn}
+				clip = append(clip, []*node{tn, b})
+
+				a.remove(b)
+				b.remove(a)
+				a.add(tn)
+				b.add(tn)
+				tn.add(a)
+				tn.add(b)
 			}
-
-			tn.isInside = true
-			clip[i] = []*node{a, tn}
-			clip = append(clip, []*node{tn, b})
-
-			a.remove(b)
-			b.remove(a)
-			a.add(tn)
-			b.add(tn)
-			tn.add(a)
-			tn.add(b)
 		}
 	}
-
 	return targetNodes, clip
-
 }
 
 func intersect(target, clip [][]*node, id *idGenerator) ([][]*node, [][]*node) {
-
 	for i := 0; i < len(clip); i++ {
-		edge1 := clip[i]
-
 		for j := 0; j < len(target); j++ {
-			edge2 := target[j]
-
-			intNode := findIntersect(edge1, edge2)
-
-			if intNode != nil {
-
-				intNode.id = id.Next()
-
-				relink(intNode, edge1[0], edge1[1], edge2[0], edge2[1])
-
-				edge1End := edge1[1]
-				edge2End := edge2[1]
-
-				edge1[1] = intNode
-				clip[i] = edge1
-				clip = append(clip, []*node{intNode, edge1End})
-				edge2[1] = intNode
-				target[j] = edge2
-				target = append(target, []*node{intNode, edge2End})
-				// reset for loop
-				i = -1
-				break
+			e1, e2 := clip[i], target[j]
+			intNode := findIntersect(e1, e2)
+			if intNode == nil {
+				continue
 			}
 
+			intNode.id = id.Next()
+
+			u1, v1 := e1[0], e1[1]
+			u2, v2 := e2[0], e2[1]
+
+			// Split logic: maintain graph connectivity
+			u1.remove(v1)
+			v1.remove(u1)
+			u2.remove(v2)
+			v2.remove(u2)
+
+			u1.add(intNode)
+			intNode.add(v1)
+			u2.add(intNode)
+			intNode.add(v2)
+
+			// Update Edge Slices
+			clip[i] = []*node{u1, intNode}
+			clip = append(clip, []*node{intNode, v1})
+
+			target[j] = []*node{u2, intNode}
+			target = append(target, []*node{intNode, v2})
+
+			j-- // Immediate re-check of the shortened segment
 		}
-
 	}
-
 	return target, clip
-
 }
 
-func Clip(tri, clip Polygon) (Polygons, error) {
+func newClip(tri, clip Polygon) (Polygons, error) {
 
 	idGen := &idGenerator{}
 
@@ -627,81 +637,37 @@ func isInsideNodes(n1 *node, n2 []*node) bool {
 	return inside
 }
 
-func findIntersect(edge1 []*node, edge2 []*node) *node {
-	if len(edge1) < 2 || len(edge2) < 2 {
-		return nil
-	}
+func findIntersect(edge1, edge2 []*node) *node {
+	a1, a2 := edge1[0].coord, edge1[1].coord
+	b1, b2 := edge2[0].coord, edge2[1].coord
 
-	a1 := edge1[0].coord
-	a2 := edge1[1].coord
-	b1 := edge2[0].coord
-	b2 := edge2[1].coord
-
-	// Quick reject using bounding boxes
-	aMinX, aMaxX := a1[0], a2[0]
-	if aMinX > aMaxX {
-		aMinX, aMaxX = aMaxX, aMinX
-	}
-	aMinY, aMaxY := a1[1], a2[1]
-	if aMinY > aMaxY {
-		aMinY, aMaxY = aMaxY, aMinY
-	}
-	bMinX, bMaxX := b1[0], b2[0]
-	if bMinX > bMaxX {
-		bMinX, bMaxX = bMaxX, bMinX
-	}
-	bMinY, bMaxY := b1[1], b2[1]
-	if bMinY > bMaxY {
-		bMinY, bMaxY = bMaxY, bMinY
-	}
-	if aMaxX < bMinX || aMinX > bMaxX || aMaxY < bMinY || aMinY > bMaxY {
-		return nil
-	}
-
-	ax := a2[0] - a1[0]
-	ay := a2[1] - a1[1]
-	bx := b2[0] - b1[0]
-	by := b2[1] - b1[1]
+	ax, ay := a2[0]-a1[0], a2[1]-a1[1]
+	bx, by := b2[0]-b1[0], b2[1]-b1[1]
 	den := ax*by - ay*bx
 
-	if den == 0 {
+	if math.Abs(den) < denEps {
 		return nil
 	}
 
-	cx := b1[0] - a1[0]
-	cy := b1[1] - a1[1]
+	cx, cy := b1[0]-a1[0], b1[1]-a1[1]
 	t := (cx*by - cy*bx) / den
 	u := (cx*ay - cy*ax) / den
 
-	if t <= 0 || t >= 1 || u <= 0 || u >= 1 {
+	if t < eps || t > 1-eps || u < eps || u > 1-eps {
 		return nil
 	}
 
-	x := a1[0] + t*ax
-	y := a1[1] + t*ay
-
-	z := a1[2] + t*(a2[2]-a1[2])
-
 	return &node{
-		coord:    [3]float64{x, y, z},
+		coord:    Coord{a1[0] + t*ax, a1[1] + t*ay, a1[2] + t*(a2[2]-a1[2])},
 		isInside: true,
 	}
 }
 
 func pointOnEdge(px, py, x1, y1, x2, y2 float64) bool {
-	// Cross product for collinearity
-	cross := (x2-x1)*(py-y1) - (y2-y1)*(px-x1)
-	if math.Abs(cross) > 1e-9 {
+	if px < math.Min(x1, x2)-eps || px > math.Max(x1, x2)+eps ||
+		py < math.Min(y1, y2)-eps || py > math.Max(y1, y2)+eps {
 		return false
 	}
-	// Check if point is within bounding box
-	minX, maxX := x1, x2
-	if minX > maxX {
-		minX, maxX = maxX, minX
-	}
-	minY, maxY := y1, y2
-	if minY > maxY {
-		minY, maxY = maxY, minY
-	}
-	return px >= minX && px <= maxX && py >= minY && py <= maxY
+	cross := (x2-x1)*(py-y1) - (y2-y1)*(px-x1)
+	return math.Abs(cross) < eps
 }
