@@ -1,6 +1,7 @@
 package clippoly
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -79,7 +80,7 @@ func TestSliceFaceReturnsNil(t *testing.T) {
 
 func TestClipPrintsLines(t *testing.T) {
 	face := []Vec3{
-		{X: 12, Y: 0, Z: 0},
+		{X: -2, Y: 5, Z: 0},
 		{X: 2, Y: 0, Z: 0},
 		{X: 2, Y: 2, Z: 0},
 	}
@@ -89,9 +90,62 @@ func TestClipPrintsLines(t *testing.T) {
 		{X: 3, Y: 3},
 		{X: -1, Y: 3},
 	}
-	clip(face, clipFrame)
+	p := clip(face, clipFrame)
 
-	saveFaceAndClipFramePNG(t, face, clipFrame, "clip_face.png")
+	fmt.Printf("p: %v\n", p)
+
+	const (
+		width  = 256
+		height = 256
+	)
+	bounds := newBounds2D()
+	bounds.addVec3(face)
+	bounds.addPolygon2D(clipFrame)
+	bounds.addVec3(p)
+	mapper := newPixelMapper(width, height, 0.1, bounds)
+
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	draw.Draw(img, img.Bounds(), image.NewUniform(color.RGBA{255, 255, 255, 255}), image.Point{}, draw.Src)
+
+	faceColor := color.RGBA{0, 0, 0, 255}
+	for i := range face {
+		a := toVec2(face[i])
+		b := toVec2(face[(i+1)%len(face)])
+		ax, ay := mapper.toPixel(a)
+		bx, by := mapper.toPixel(b)
+		drawLine(img, ax, ay, bx, by, faceColor)
+	}
+	frameColor := color.RGBA{0, 120, 220, 255}
+	for i := range clipFrame {
+		a := clipFrame[i]
+		b := clipFrame.next(i)
+		ax, ay := mapper.toPixel(a)
+		bx, by := mapper.toPixel(b)
+		drawLine(img, ax, ay, bx, by, frameColor)
+	}
+	resultColor := color.RGBA{220, 0, 0, 255}
+	for i := range p {
+		a := toVec2(p[i])
+		b := toVec2(p.next(i))
+		ax, ay := mapper.toPixel(a)
+		bx, by := mapper.toPixel(b)
+		drawLine(img, ax, ay, bx, by, resultColor)
+	}
+
+	outDir := filepath.Join(".", t.Name())
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		t.Fatalf("create output dir: %v", err)
+	}
+	outPath := filepath.Join(outDir, "clip_face.png")
+	f, err := os.Create(outPath)
+	if err != nil {
+		t.Fatalf("create png: %v", err)
+	}
+	defer f.Close()
+	if err := png.Encode(f, img); err != nil {
+		t.Fatalf("encode png: %v", err)
+	}
+	t.Logf("wrote %s", outPath)
 }
 
 func saveFaceAndLinePNG(t *testing.T, face []Vec3, line []Vec2, filename string) {
@@ -100,71 +154,10 @@ func saveFaceAndLinePNG(t *testing.T, face []Vec3, line []Vec2, filename string)
 		width  = 256
 		height = 256
 	)
-	minX, minY := math.Inf(1), math.Inf(1)
-	maxX, maxY := math.Inf(-1), math.Inf(-1)
-	for _, v := range face {
-		if v.X < minX {
-			minX = v.X
-		}
-		if v.Y < minY {
-			minY = v.Y
-		}
-		if v.X > maxX {
-			maxX = v.X
-		}
-		if v.Y > maxY {
-			maxY = v.Y
-		}
-	}
-	for _, v := range line {
-		if v.X < minX {
-			minX = v.X
-		}
-		if v.Y < minY {
-			minY = v.Y
-		}
-		if v.X > maxX {
-			maxX = v.X
-		}
-		if v.Y > maxY {
-			maxY = v.Y
-		}
-	}
-	spanX := maxX - minX
-	spanY := maxY - minY
-	if spanX == 0 {
-		spanX = 1
-	}
-	if spanY == 0 {
-		spanY = 1
-	}
-	padX := spanX * 0.1
-	padY := spanY * 0.1
-	minX -= padX
-	maxX += padX
-	minY -= padY
-	maxY += padY
-	spanX = maxX - minX
-	spanY = maxY - minY
-	scaleX := float64(width-1) / spanX
-	scaleY := float64(height-1) / spanY
-	scale := math.Min(scaleX, scaleY)
-
-	toPixel := func(p Vec2) (int, int) {
-		x := int(math.Round((p.X - minX) * scale))
-		y := int(math.Round((maxY - p.Y) * scale))
-		if x < 0 {
-			x = 0
-		} else if x >= width {
-			x = width - 1
-		}
-		if y < 0 {
-			y = 0
-		} else if y >= height {
-			y = height - 1
-		}
-		return x, y
-	}
+	bounds := newBounds2D()
+	bounds.addVec3(face)
+	bounds.addVec2(line)
+	mapper := newPixelMapper(width, height, 0.1, bounds)
 
 	img := image.NewRGBA(image.Rect(0, 0, width, height))
 	draw.Draw(img, img.Bounds(), image.NewUniform(color.RGBA{255, 255, 255, 255}), image.Point{}, draw.Src)
@@ -173,13 +166,13 @@ func saveFaceAndLinePNG(t *testing.T, face []Vec3, line []Vec2, filename string)
 	for i := range face {
 		a := toVec2(face[i])
 		b := toVec2(face[(i+1)%len(face)])
-		ax, ay := toPixel(a)
-		bx, by := toPixel(b)
+		ax, ay := mapper.toPixel(a)
+		bx, by := mapper.toPixel(b)
 		drawLine(img, ax, ay, bx, by, edgeColor)
 	}
 	lineColor := color.RGBA{220, 0, 0, 255}
-	l0x, l0y := toPixel(line[0])
-	l1x, l1y := toPixel(line[1])
+	l0x, l0y := mapper.toPixel(line[0])
+	l1x, l1y := mapper.toPixel(line[1])
 	drawLine(img, l0x, l0y, l1x, l1y, lineColor)
 
 	outDir := filepath.Join(".", t.Name())
@@ -204,71 +197,10 @@ func saveFaceAndClipFramePNG(t *testing.T, face []Vec3, clipFrame Polygon2D, fil
 		width  = 256
 		height = 256
 	)
-	minX, minY := math.Inf(1), math.Inf(1)
-	maxX, maxY := math.Inf(-1), math.Inf(-1)
-	for _, v := range face {
-		if v.X < minX {
-			minX = v.X
-		}
-		if v.Y < minY {
-			minY = v.Y
-		}
-		if v.X > maxX {
-			maxX = v.X
-		}
-		if v.Y > maxY {
-			maxY = v.Y
-		}
-	}
-	for _, v := range clipFrame {
-		if v.X < minX {
-			minX = v.X
-		}
-		if v.Y < minY {
-			minY = v.Y
-		}
-		if v.X > maxX {
-			maxX = v.X
-		}
-		if v.Y > maxY {
-			maxY = v.Y
-		}
-	}
-	spanX := maxX - minX
-	spanY := maxY - minY
-	if spanX == 0 {
-		spanX = 1
-	}
-	if spanY == 0 {
-		spanY = 1
-	}
-	padX := spanX * 0.1
-	padY := spanY * 0.1
-	minX -= padX
-	maxX += padX
-	minY -= padY
-	maxY += padY
-	spanX = maxX - minX
-	spanY = maxY - minY
-	scaleX := float64(width-1) / spanX
-	scaleY := float64(height-1) / spanY
-	scale := math.Min(scaleX, scaleY)
-
-	toPixel := func(p Vec2) (int, int) {
-		x := int(math.Round((p.X - minX) * scale))
-		y := int(math.Round((maxY - p.Y) * scale))
-		if x < 0 {
-			x = 0
-		} else if x >= width {
-			x = width - 1
-		}
-		if y < 0 {
-			y = 0
-		} else if y >= height {
-			y = height - 1
-		}
-		return x, y
-	}
+	bounds := newBounds2D()
+	bounds.addVec3(face)
+	bounds.addPolygon2D(clipFrame)
+	mapper := newPixelMapper(width, height, 0.1, bounds)
 
 	img := image.NewRGBA(image.Rect(0, 0, width, height))
 	draw.Draw(img, img.Bounds(), image.NewUniform(color.RGBA{255, 255, 255, 255}), image.Point{}, draw.Src)
@@ -277,16 +209,16 @@ func saveFaceAndClipFramePNG(t *testing.T, face []Vec3, clipFrame Polygon2D, fil
 	for i := range face {
 		a := toVec2(face[i])
 		b := toVec2(face[(i+1)%len(face)])
-		ax, ay := toPixel(a)
-		bx, by := toPixel(b)
+		ax, ay := mapper.toPixel(a)
+		bx, by := mapper.toPixel(b)
 		drawLine(img, ax, ay, bx, by, faceColor)
 	}
 	frameColor := color.RGBA{0, 120, 220, 255}
 	for i := range clipFrame {
 		a := clipFrame[i]
 		b := clipFrame.next(i)
-		ax, ay := toPixel(a)
-		bx, by := toPixel(b)
+		ax, ay := mapper.toPixel(a)
+		bx, by := mapper.toPixel(b)
 		drawLine(img, ax, ay, bx, by, frameColor)
 	}
 
@@ -304,6 +236,129 @@ func saveFaceAndClipFramePNG(t *testing.T, face []Vec3, clipFrame Polygon2D, fil
 		t.Fatalf("encode png: %v", err)
 	}
 	t.Logf("wrote %s", outPath)
+}
+
+type bounds2D struct {
+	minX float64
+	minY float64
+	maxX float64
+	maxY float64
+}
+
+func newBounds2D() bounds2D {
+	return bounds2D{
+		minX: math.Inf(1),
+		minY: math.Inf(1),
+		maxX: math.Inf(-1),
+		maxY: math.Inf(-1),
+	}
+}
+
+func (b *bounds2D) addVec3(points []Vec3) {
+	for i := range points {
+		v := points[i]
+		if v.X < b.minX {
+			b.minX = v.X
+		}
+		if v.Y < b.minY {
+			b.minY = v.Y
+		}
+		if v.X > b.maxX {
+			b.maxX = v.X
+		}
+		if v.Y > b.maxY {
+			b.maxY = v.Y
+		}
+	}
+}
+
+func (b *bounds2D) addVec2(points []Vec2) {
+	for i := range points {
+		v := points[i]
+		if v.X < b.minX {
+			b.minX = v.X
+		}
+		if v.Y < b.minY {
+			b.minY = v.Y
+		}
+		if v.X > b.maxX {
+			b.maxX = v.X
+		}
+		if v.Y > b.maxY {
+			b.maxY = v.Y
+		}
+	}
+}
+
+func (b *bounds2D) addPolygon2D(points Polygon2D) {
+	for i := range points {
+		v := points[i]
+		if v.X < b.minX {
+			b.minX = v.X
+		}
+		if v.Y < b.minY {
+			b.minY = v.Y
+		}
+		if v.X > b.maxX {
+			b.maxX = v.X
+		}
+		if v.Y > b.maxY {
+			b.maxY = v.Y
+		}
+	}
+}
+
+type pixelMapper struct {
+	minX   float64
+	maxY   float64
+	scale  float64
+	width  int
+	height int
+}
+
+func newPixelMapper(width, height int, padFrac float64, bounds bounds2D) pixelMapper {
+	spanX := bounds.maxX - bounds.minX
+	spanY := bounds.maxY - bounds.minY
+	if spanX == 0 {
+		spanX = 1
+	}
+	if spanY == 0 {
+		spanY = 1
+	}
+	padX := spanX * padFrac
+	padY := spanY * padFrac
+	bounds.minX -= padX
+	bounds.maxX += padX
+	bounds.minY -= padY
+	bounds.maxY += padY
+	spanX = bounds.maxX - bounds.minX
+	spanY = bounds.maxY - bounds.minY
+	scaleX := float64(width-1) / spanX
+	scaleY := float64(height-1) / spanY
+	scale := math.Min(scaleX, scaleY)
+	return pixelMapper{
+		minX:   bounds.minX,
+		maxY:   bounds.maxY,
+		scale:  scale,
+		width:  width,
+		height: height,
+	}
+}
+
+func (m pixelMapper) toPixel(p Vec2) (int, int) {
+	x := int(math.Round((p.X - m.minX) * m.scale))
+	y := int(math.Round((m.maxY - p.Y) * m.scale))
+	if x < 0 {
+		x = 0
+	} else if x >= m.width {
+		x = m.width - 1
+	}
+	if y < 0 {
+		y = 0
+	} else if y >= m.height {
+		y = m.height - 1
+	}
+	return x, y
 }
 
 func drawLine(img *image.RGBA, x0, y0, x1, y1 int, c color.Color) {

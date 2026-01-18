@@ -102,7 +102,7 @@ func createVertTable(face Polygon3D) vertTable {
 	return v
 }
 
-func clip(face Polygon3D, clipFrame Polygon2D) {
+func clip(face Polygon3D, clipFrame Polygon2D) Polygon3D {
 
 	loop := createIDLoop(face)
 	vertTable := createVertTable(face)
@@ -115,7 +115,8 @@ func clip(face Polygon3D, clipFrame Polygon2D) {
 
 		line := []Vec2{clipFrame[i], clipFrame.next(i)}
 
-		for _, e := range loop {
+		for edgeIdx := 0; edgeIdx < len(loop); {
+			e := loop[edgeIdx]
 
 			from, to := vertTable[e[0]], vertTable[e[1]]
 			edge := []Vec3{from, to}
@@ -125,19 +126,19 @@ func clip(face Polygon3D, clipFrame Polygon2D) {
 			isInsideNext := insideHalfPlane(toVec2(to), line)
 
 			if isInsideCurr && isInsideNext {
+				edgeIdx++
 				continue
 			}
 
 			if !isInsideCurr && !isInsideNext {
 				// remove edge
+				loop = append(loop[:edgeIdx], loop[edgeIdx+1:]...)
 				continue
 			}
 
 			// must intersect
 			newVec3 := intersect(edge, line)
-			// error is not
-
-			_ = newVec3 // add to map
+			vertTable[newIdx] = newVec3
 
 			if !isInsideCurr {
 				e[0] = newIdx
@@ -146,13 +147,29 @@ func clip(face Polygon3D, clipFrame Polygon2D) {
 			}
 
 			newIdx++
-
+			edgeIdx++
 		}
 		fmt.Printf("loop: %v- from clip %v\n", loop, i)
 		// fix loop
 		loop.fix()
 	}
 	fmt.Printf("loop: %v\n", loop)
+
+	p := polygonFromLoop(loop, vertTable)
+	return p
+}
+
+func polygonFromLoop(loop [][]int, vertTable vertTable) Polygon3D {
+
+	var p Polygon3D
+
+	for _, i := range loop {
+		idx := i[0]
+		v := vertTable[idx]
+		p = append(p, v)
+	}
+
+	return p
 }
 
 type loop [][]int
